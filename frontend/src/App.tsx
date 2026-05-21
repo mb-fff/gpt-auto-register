@@ -4,6 +4,7 @@ import { Layout, Menu } from 'antd';
 import Dashboard from './pages/Dashboard';
 import Accounts from './pages/Accounts';
 import Tasks from './pages/Tasks';
+import RealTimeMonitor from './pages/RealTimeMonitor';
 
 const { Header, Content, Footer } = Layout;
 
@@ -19,6 +20,7 @@ const App: React.FC = () => {
             <Menu.Item key="1"><Link to="/">Dashboard</Link></Menu.Item>
             <Menu.Item key="2"><Link to="/accounts">账号列表</Link></Menu.Item>
             <Menu.Item key="3"><Link to="/tasks">创建任务</Link></Menu.Item>
+            <Menu.Item key="4"><Link to="/monitor">实时监控</Link></Menu.Item>
           </Menu>
         </Header>
         <Content style={{ padding: '20px' }}>
@@ -26,6 +28,7 @@ const App: React.FC = () => {
             <Route path="/" element={<Dashboard />} />
             <Route path="/accounts" element={<Accounts />} />
             <Route path="/tasks" element={<Tasks />} />
+            <Route path="/monitor" element={<RealTimeMonitor />} />
           </Routes>
         </Content>
         <Footer style={{ textAlign: 'center' }}>
