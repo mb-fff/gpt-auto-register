@@ -20,7 +20,7 @@ export class RegisterProcessor extends WorkerHost {
 
     try {
       // 创建账号 + Profile
-      const account = await this.accountService.createAccountWithProfile(
+      const account = await this.accountService.createAccount(
         `test${Date.now()}@example.com`, // 实际应使用临时邮箱或接码
         job.data.proxy,
       );

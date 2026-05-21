@@ -6,28 +6,28 @@ import { DolphinService } from '../../common/dolphin/dolphin.service';
 export class AccountService {
   constructor(
     private prisma: PrismaService,
-    private dolphinService: DolphinService,
+    private dolphin: DolphinService,
   ) {}
 
-  async findAll() {
-    return (this.prisma as any).account.findMany({ orderBy: { createdAt: 'desc' } });
-  }
+  async createAccount(email: string, proxy?: string) {
+    const profile = await this.dolphin.createProfile(`profile-${Date.now()}`, proxy);
 
-  async createAccountWithProfile(email: string, proxy?: string) {
-    const profile = await this.dolphinService.createProfile(email, proxy);
-
-    return (this.prisma as any).account.create({
+    return this.prisma.account.create({
       data: {
         email,
+        profileId: profile.id || profile.profileId,
         proxy,
-        profileId: profile.id,
-        status: 'created',
+        status: 'pending',
       },
     });
   }
 
+  async findAll() {
+    return this.prisma.account.findMany();
+  }
+
   async saveRefreshToken(accountId: string, refreshToken: string) {
-    return (this.prisma as any).account.update({
+    return this.prisma.account.update({
       where: { id: accountId },
       data: {
         refreshToken,
