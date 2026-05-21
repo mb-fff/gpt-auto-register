@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -24,11 +22,19 @@ services:
 
   backend:
     build: ./backend
+    command: sh -c "pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm run dev"
     restart: always
-    env_file:
-      - .env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/gptar?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: super-secret-change-me-please
+      DOLPHIN_API_BASE: http://host.docker.internal:3001
+      PRISMA_ENGINES_MIRROR: https://registry.npmmirror.com/-/binary/prisma
+      PORT: "3001"
     ports:
-      - "3001:3001"
+      - "13001:3001"
     depends_on:
       - postgres
       - redis
@@ -37,7 +43,7 @@ services:
     build: ./frontend
     restart: always
     ports:
-      - "3000:80"
+      - "3100:5173"
     depends_on:
       - backend
 

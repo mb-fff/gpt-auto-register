@@ -10,13 +10,13 @@ export class AccountService {
   ) {}
 
   async findAll() {
-    return this.prisma.account.findMany({ orderBy: { createdAt: 'desc' } });
+    return (this.prisma as any).account.findMany({ orderBy: { createdAt: 'desc' } });
   }
 
   async createAccountWithProfile(email: string, proxy?: string) {
     const profile = await this.dolphinService.createProfile(email, proxy);
 
-    return this.prisma.account.create({
+    return (this.prisma as any).account.create({
       data: {
         email,
         proxy,
@@ -27,7 +27,7 @@ export class AccountService {
   }
 
   async saveRefreshToken(accountId: string, refreshToken: string) {
-    return this.prisma.account.update({
+    return (this.prisma as any).account.update({
       where: { id: accountId },
       data: {
         refreshToken,

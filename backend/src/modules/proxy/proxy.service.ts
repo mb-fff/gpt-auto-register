@@ -6,10 +6,10 @@ export class ProxyService {
   constructor(private prisma: PrismaService) {}
 
   async addProxy(data: any) {
-    return this.prisma.proxy.create({ data });
+    return (this.prisma as any).proxy.create({ data });
   }
 
   async getActiveProxies() {
-    return this.prisma.proxy.findMany({ where: { isActive: true } });
+    return (this.prisma as any).proxy.findMany({ where: { isActive: true } });
   }
 }

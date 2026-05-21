@@ -3,8 +3,11 @@
 
 node_modules/
 dist/
+.pnpm-store/
 
 backend/node_modules/
 backend/dist/
+backend/.pnpm-store/
 frontend/node_modules/
 frontend/dist/
+frontend/.pnpm-store/
