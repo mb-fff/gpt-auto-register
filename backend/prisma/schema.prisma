@@ -1,0 +1,42 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  profileId     String
+  proxy         String?
+  status        String   @default("pending")
+  refreshToken  String?
+  accessToken   String?
+  rtExpiresAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tasks         Task[]
+}
+
+model Task {
+  id        String  @id @default(cuid())
+  accountId String
+  type      String
+  status    String  @default("queued")
+  logs      String[]
+  createdAt DateTime @default(now())
+
+  account   Account @relation(fields: [accountId], references: [id])
+}
+
+model Proxy {
+  id        String  @id @default(cuid())
+  url       String
+  country   String?
+  isActive  Boolean @default(true)
+  createdAt DateTime @default(now())
+}
