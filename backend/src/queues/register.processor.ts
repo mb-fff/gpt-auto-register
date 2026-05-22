@@ -24,7 +24,7 @@ export class RegisterProcessor extends WorkerHost {
         job.data.proxy
       );
 
-      await this.oauthService.startOAuth(account.id, account.email);
+      await this.oauthService.startOAuth(account.id);
 
       this.logger.log(`✅ 任务 #${job.data.count} 执行成功`);
       return { success: true, accountId: account.id };
