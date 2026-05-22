@@ -31,6 +31,12 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: super-secret-change-me-please
       DOLPHIN_API_BASE: http://host.docker.internal:3001
+      EMAIL_DOMAIN: ${EMAIL_DOMAIN:-example.com}
+      IMAP_HOST: ${IMAP_HOST:-imap.gmail.com}
+      IMAP_PORT: ${IMAP_PORT:-993}
+      IMAP_SECURE: ${IMAP_SECURE:-true}
+      IMAP_USER: ${IMAP_USER:-}
+      IMAP_PASS: ${IMAP_PASS:-}
       PRISMA_ENGINES_MIRROR: https://registry.npmmirror.com/-/binary/prisma
       PORT: "3001"
     ports:

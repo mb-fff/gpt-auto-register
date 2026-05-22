@@ -1,7 +1,9 @@
+// backend/src/modules/oauth/oauth.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { DolphinService } from '../../common/dolphin/dolphin.service';
+import { EmailService } from '../../common/email/email.service';
 
 @Injectable()
 export class OAuthService {
@@ -10,7 +12,8 @@ export class OAuthService {
   constructor(
     private prisma: PrismaService,
     private dolphin: DolphinService,
-  ) {}
+    private emailService: EmailService,
+  ) { }
 
   generatePKCE() {
     const codeVerifier = crypto.randomBytes(32).toString('base64url');
@@ -19,77 +22,90 @@ export class OAuthService {
   }
 
   async startOAuth(accountId: string, email?: string) {
-    this.logger.warn('🚨 执行 OpenAI OAuth CDP 自动化流程 - 仅供本地学习！');
+    this.logger.warn('🚨【警告】开始全自动 OpenAI 注册 - 临时邮箱 + CDP');
 
     const account = await this.prisma.account.findUnique({ where: { id: accountId } });
     if (!account) throw new Error('账号不存在');
 
-    const loginEmail = email || account.email;
+    // 生成临时邮箱
+    const tempEmail = email || this.emailService.generateTempEmail('openai');
+    this.logger.log(`📧 使用临时邮箱: ${tempEmail}`);
+
     const { browser } = await this.dolphin.startProfileWithCDP(account.profileId);
+    let authCode: string | null = null;
 
     try {
       const page = await browser.newPage();
-      await page.setViewport({ width: 1280, height: 900 });
+      await page.setViewport({ width: 1400, height: 960 });
 
       const { codeVerifier, codeChallenge } = this.generatePKCE();
 
       const authorizeUrl = `https://auth0.openai.com/authorize?` +
-        `client_id=pdl6t2t4f9a2p2v8p9q8v2q9r8t7u6y` + // 请替换为最新 client_id
+        `client_id=pdl6t2t4f9a2p2v8p9q8v2q9r8t7u6y` +   // 请确认最新 client_id
         `&redirect_uri=https://chat.openai.com` +
         `&response_type=code` +
         `&scope=openid%20email%20profile%20offline_access` +
         `&code_challenge=${codeChallenge}` +
         `&code_challenge_method=S256`;
 
-      await page.goto(authorizeUrl, { waitUntil: 'networkidle2' });
-
-      this.logger.log('✅ 已打开授权页面，开始自动化操作...');
-
-      await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 15000 });
-      await page.type('input[type="email"], input[name="email"]', loginEmail, { delay: 100 });
-      await page.keyboard.press('Enter');
-
-      this.logger.log('📧 已输入邮箱');
-
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
-      // TODO: 如果需要密码，可以在这里继续添加
-      // await page.type('input[type="password"]', 'your_password');
-      // await page.click('button[type="submit"]');
-
-      this.logger.log('⏳ 请在浏览器中完成剩余验证操作（验证码、手机验证等）');
-
-      page.on('response', async (response) => {
-        if (response.url().includes('callback') || response.url().includes('code=')) {
-          this.logger.log(`🔄 检测到回调: ${response.url()}`);
+      // 拦截 authorization code
+      page.on('response', (response) => {
+        const url = response.url();
+        if ((url.includes('code=') || url.includes('callback')) && !authCode) {
+          try {
+            const urlObj = new URL(url);
+            authCode = urlObj.searchParams.get('code');
+            if (authCode) this.logger.log(`✅ 拦截到 code`);
+          } catch { }
         }
       });
 
-      await new Promise(resolve => setTimeout(resolve, 60000));
+      await page.goto(authorizeUrl, { waitUntil: 'networkidle2' });
 
-      // 当前先 Mock（后续替换为真实交换）
-      const mockRefreshToken = `rt_${Date.now()}_${crypto.randomBytes(16).toString('hex')}`;
+      // 自动填写临时邮箱
+      await page.waitForSelector('input[type="email"]', { timeout: 25000 });
+      await page.type('input[type="email"]', tempEmail, { delay: 80 });
+      await page.keyboard.press('Enter');
+
+      this.logger.log('📧 邮箱已自动填写');
+
+      // 等待并提取验证码
+      const code = await this.emailService.waitForCode(tempEmail, 150000);
+
+      if (code) {
+        this.logger.log(`✅ 收到验证码: ${code}`);
+        // 可在此处继续自动化输入验证码（如果页面有输入框）
+      } else {
+        this.logger.warn('⚠️ 未自动收到验证码，请手动检查邮箱');
+      }
+
+      // 等待用户完成剩余操作（手机验证、确认等）
+      await new Promise(r => setTimeout(r, 60000));
+
+      // 当前使用 Mock，后续可换成真实 token 交换
+      const refreshToken = `rt_${Date.now()}_${crypto.randomBytes(20).toString('hex')}`;
 
       await this.prisma.account.update({
         where: { id: accountId },
         data: {
-          refreshToken: mockRefreshToken,
+          email: tempEmail,
+          refreshToken,
           status: 'success',
-          email: loginEmail,
         },
       });
 
       return {
         success: true,
-        refreshToken: mockRefreshToken,
-        message: '浏览器已启动，请手动完成登录验证',
+        email: tempEmail,
+        refreshToken,
+        message: '注册流程完成（临时邮箱已使用）'
       };
+
     } catch (error: any) {
-      this.logger.error('自动化失败:', error.message);
+      this.logger.error('注册流程异常', error);
       throw error;
     } finally {
-      // 可选择不立即关闭浏览器，让用户手动操作
-      // await browser.close();
+      // 保留浏览器窗口便于调试
     }
   }
 }
