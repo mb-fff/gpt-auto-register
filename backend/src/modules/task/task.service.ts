@@ -12,18 +12,30 @@ export class TaskService {
     @InjectQueue('register-queue') private registerQueue: Queue,
   ) {}
 
-  async createRegisterTask(count: number, country?: string, proxy?: string) {
-    this.logger.warn('⚠️ 创建批量注册任务 - 仅本地学习使用');
+  async createRegisterTasks(count: number, proxy?: string) {
+    this.logger.warn(`⚠️ 创建 ${count} 个注册任务 - 仅供本地学习使用`);
 
-    const tasks = [];
+    const jobs = [];
     for (let i = 0; i < count; i++) {
-      const job = await this.registerQueue.add('register', {
-        count: i + 1,
-        country,
-        proxy,
-      });
-      tasks.push(job);
+      const job = await this.registerQueue.add(
+        'register',
+        { count: i + 1, proxy },
+        { attempts: 3, backoff: { type: 'exponential', delay: 5000 } }
+      );
+      jobs.push(job.id);
     }
-    return { jobs: tasks.length };
+
+    return {
+      message: `成功加入 ${count} 个任务`,
+      jobIds: jobs,
+    };
+  }
+
+  async getQueueStatus() {
+    return {
+      waiting: await this.registerQueue.getWaitingCount(),
+      active: await this.registerQueue.getActiveCount(),
+      completed: await this.registerQueue.getCompletedCount(),
+    };
   }
 }
