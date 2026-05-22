@@ -15,6 +15,7 @@ model Account {
   status        String   @default("pending")
   refreshToken  String?
   accessToken   String?
+  rtExpiresAt   DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }

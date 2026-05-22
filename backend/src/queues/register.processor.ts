@@ -16,23 +16,21 @@ export class RegisterProcessor extends WorkerHost {
   }
 
   async process(job: Job) {
-    this.logger.log(`🚀 开始执行注册任务 #${job.data.count}`);
+    this.logger.log(`🚀 开始处理注册任务 #${job.data.count}`);
 
     try {
-      // 创建账号
       const account = await this.accountService.createAccount(
-        `user${Date.now() + job.data.count}@example.com`, // 实际应使用临时邮箱
+        `test${Date.now() + job.data.count}@example.com`,
         job.data.proxy
       );
 
-      // 执行 OAuth 授权获取 Refresh Token
-      const result = await this.oauthService.startOAuth(account.id);
+      await this.oauthService.startOAuth(account.id);
 
-      this.logger.log(`✅ 任务 #${job.data.count} 完成，RT 已获取`);
-      return { success: true, accountId: account.id, refreshToken: result.refreshToken };
-    } catch (error) {
+      this.logger.log(`✅ 任务 #${job.data.count} 执行成功`);
+      return { success: true, accountId: account.id };
+    } catch (error: any) {
       this.logger.error(`❌ 任务失败: ${error.message}`);
-      throw error; // BullMQ 会自动重试
+      throw error;
     }
   }
 }

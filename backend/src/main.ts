@@ -7,25 +7,25 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({
-    origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+    origin: '*', // 本地开发可放开
   });
 
   app.useGlobalPipes(new ValidationPipe({ transform: true }));
 
-  // Swagger 文档
+  // Swagger
   const config = new DocumentBuilder()
-    .setTitle('GPT Auto Register API')
-    .setDescription('⚠️ 仅供本地个人学习和技术研究使用！自动化注册 OpenAI 账号存在封号风险。')
+    .setTitle('GPT Auto Register')
+    .setDescription('⚠️ 仅供本地学习研究使用 - OpenAI 自动注册项目')
     .setVersion('1.0')
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);
 
-  const port = parseInt(process.env.PORT || '3001');
-
-  await app.listen(port);
-  console.log(`🚀 Backend 服务已启动: http://localhost:${port}`);
-  console.log(`📖 Swagger: http://localhost:${port}/api`);
+  await app.listen(3001);
+  console.log('🚀 Backend 服务启动成功 → http://localhost:3001');
+  console.log('📖 Swagger 文档 → http://localhost:3001/api');
 }
 
-bootstrap();
+bootstrap().catch(err => {
+  console.error('❌ 启动失败:', err);
+});
