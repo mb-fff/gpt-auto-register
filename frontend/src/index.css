@@ -39,7 +39,9 @@ body {
     radial-gradient(circle at 54% 88%, rgba(60, 210, 255, 0.08), transparent 32rem),
     linear-gradient(135deg, #07090d 0%, #0b0f16 48%, #07090d 100%);
   color: #f5f7ff;
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "HarmonyOS Sans", "Segoe UI", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "HarmonyOS Sans", "Microsoft YaHei UI", Inter, "SF Pro Display", "SF Pro Text", "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
   letter-spacing: 0;
 }
 

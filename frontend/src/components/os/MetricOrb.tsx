@@ -26,7 +26,7 @@ export function MetricOrb({
         </div>
         <span className="size-2 rounded-full bg-current shadow-[0_0_18px_currentColor]" />
       </div>
-      <div className="text-4xl font-light leading-none text-white">{value}</div>
+      <div className="text-4xl font-normal leading-none text-white">{value}</div>
       <div className="mt-2 text-sm text-white/52">{label}</div>
     </div>
   );

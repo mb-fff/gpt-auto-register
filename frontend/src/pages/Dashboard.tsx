@@ -45,9 +45,9 @@ const Dashboard: React.FC = () => {
 
   return (
     <WindowFrame
-      title="AI OS Overview"
+      title="系统总览"
       subtitle="一个悬浮式控制台，用于观察账号资产、任务队列和系统运行状态。"
-      status="Workspace Online"
+      status="工作台在线"
     >
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricOrb label="总账号数" value={stats.total} icon={<RiFingerprintLine />} tone="blue" />
@@ -61,10 +61,10 @@ const Dashboard: React.FC = () => {
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <div>
-                <CardTitle>Mission Surface</CardTitle>
+                <CardTitle>任务入口</CardTitle>
                 <CardDescription>创建、观察并进入批量注册任务工作流。</CardDescription>
               </div>
-              <StatusBadge tone="success" pulse>Ready</StatusBadge>
+              <StatusBadge tone="success" pulse>就绪</StatusBadge>
             </div>
           </CardHeader>
           <CardContent>
@@ -73,9 +73,9 @@ const Dashboard: React.FC = () => {
               <div className="relative max-w-xl">
                 <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/55">
                   <RiRobot2Line className="size-4 text-[#cdd2ff]" />
-                  Spatial automation console
+                  空间自动化控制台
                 </div>
-                <h2 className="text-3xl font-light leading-tight text-white">从一个任务面板启动整条注册链路。</h2>
+                <h2 className="text-3xl font-normal leading-tight text-white">从一个任务面板启动整条注册链路。</h2>
                 <p className="mt-3 text-sm leading-6 text-white/56">
                   保持后端队列与 OAuth 流程不变，前端提供更清晰的任务入口、状态反馈和操作节奏。
                 </p>
@@ -95,22 +95,22 @@ const Dashboard: React.FC = () => {
 
         <Card>
           <CardHeader>
-            <CardTitle>System Pulse</CardTitle>
+            <CardTitle>系统脉冲</CardTitle>
             <CardDescription>当前工作台的关键运行信号。</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             {[
-              ['Dolphin profile bridge', '待本地 Dolphin API 响应', 'violet'],
-              ['Account vault', `${stats.total} assets indexed`, 'success'],
-              ['Register queue', `${stats.running} simulated active missions`, 'warning'],
-              ['Refresh token export', 'auth.json ready when RT exists', 'neutral'],
-            ].map(([label, value, tone]) => (
-              <div key={label} className="flex items-center justify-between gap-4 rounded-3xl border border-white/[0.07] bg-white/[0.035] px-4 py-3">
+              { label: 'Dolphin Profile 桥接', value: '待本地 Dolphin API 响应', text: '检查中', tone: 'violet' },
+              { label: '账号资产库', value: `已索引 ${stats.total} 个账号`, text: '正常', tone: 'success' },
+              { label: '注册队列', value: `${stats.running} 个模拟运行任务`, text: '运行中', tone: 'warning' },
+              { label: 'Refresh Token 导出', value: '存在 RT 时可导出 auth.json', text: '待命', tone: 'neutral' },
+            ].map(item => (
+              <div key={item.label} className="flex items-center justify-between gap-4 rounded-3xl border border-white/[0.07] bg-white/[0.035] px-4 py-3">
                 <div>
-                  <div className="text-sm text-white/82">{label}</div>
-                  <div className="mt-1 text-xs text-white/42">{value}</div>
+                  <div className="text-sm text-white/82">{item.label}</div>
+                  <div className="mt-1 text-xs text-white/42">{item.value}</div>
                 </div>
-                <StatusBadge tone={tone as any} pulse={tone !== 'neutral'}>{tone}</StatusBadge>
+                <StatusBadge tone={item.tone as any} pulse={item.tone !== 'neutral'}>{item.text}</StatusBadge>
               </div>
             ))}
           </CardContent>

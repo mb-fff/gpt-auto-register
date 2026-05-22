@@ -18,10 +18,10 @@ import { Toaster } from './components/ui/sonner';
 import { cn } from './lib/utils';
 
 const navItems = [
-  { path: '/', label: 'Overview', cnLabel: '总览', icon: RiDashboardLine },
-  { path: '/accounts', label: 'Vault', cnLabel: '账号库', icon: RiFingerprintLine },
-  { path: '/tasks', label: 'Mission', cnLabel: '任务舱', icon: RiRobot2Line },
-  { path: '/monitor', label: 'Stream', cnLabel: '活动流', icon: RiTerminalBoxLine },
+  { path: '/', label: '系统总览', cnLabel: '总览', icon: RiDashboardLine },
+  { path: '/accounts', label: '账号库', cnLabel: '账号库', icon: RiFingerprintLine },
+  { path: '/tasks', label: '任务舱', cnLabel: '任务舱', icon: RiRobot2Line },
+  { path: '/monitor', label: '活动流', cnLabel: '活动流', icon: RiTerminalBoxLine },
 ];
 
 function Shell() {
@@ -68,11 +68,11 @@ function Shell() {
         <main className="flex min-w-0 flex-1 flex-col gap-4 lg:gap-6">
           <header className="glass-panel flex flex-col gap-4 rounded-[30px] px-4 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-5">
             <div>
-              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-white/36">
+              <div className="flex items-center gap-2 text-xs font-medium tracking-normal text-white/40">
                 <span className="size-1.5 rounded-full bg-emerald-300 shadow-[0_0_16px_rgba(110,231,183,0.8)]" />
-                Spatial Computing Workspace
+                空间计算工作台
               </div>
-              <div className="mt-1 text-xl font-light text-white">{active.label}</div>
+              <div className="mt-1 text-xl font-normal text-white">{active.label}</div>
             </div>
 
             <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
@@ -80,13 +80,13 @@ function Shell() {
                 <RiSearch2Line className="size-5 shrink-0" />
                 <input
                   className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/34"
-                  placeholder="Ask the system, search accounts, run commands..."
+                  placeholder="搜索账号、查看任务、输入指令..."
                 />
                 <span className="hidden rounded-xl border border-white/10 bg-white/[0.06] px-2 py-1 text-[11px] text-white/42 sm:inline">⌘ K</span>
               </div>
               <div className="hidden items-center gap-2 rounded-3xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm text-white/60 md:flex">
                 <RiPulseLine className="size-4 text-emerald-200" />
-                Online
+                在线
               </div>
             </div>
 

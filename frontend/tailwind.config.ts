@@ -8,13 +8,15 @@ const config: Config = {
     extend: {
       fontFamily: {
         sans: [
-          'Inter',
           '-apple-system',
           'BlinkMacSystemFont',
+          'PingFang SC',
+          'Hiragino Sans GB',
+          'HarmonyOS Sans',
+          'Microsoft YaHei UI',
+          'Inter',
           'SF Pro Display',
           'SF Pro Text',
-          'PingFang SC',
-          'HarmonyOS Sans',
           'Segoe UI',
           'sans-serif',
         ],

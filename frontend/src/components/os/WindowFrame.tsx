@@ -19,8 +19,8 @@ export function WindowFrame({
     <GlassPanel className={cn('min-h-[calc(100vh-128px)] overflow-hidden', className)}>
       <div className="flex flex-col gap-4 border-b border-white/[0.07] px-5 py-5 sm:flex-row sm:items-center sm:justify-between lg:px-7">
         <div className="min-w-0">
-          <p className="mb-2 text-xs font-medium uppercase tracking-[0.24em] text-white/36">AI Operating System</p>
-          <h1 className="truncate text-2xl font-light tracking-normal text-white sm:text-3xl">{title}</h1>
+          <p className="mb-2 text-xs font-medium tracking-normal text-white/38">AI 工作系统</p>
+          <h1 className="truncate text-2xl font-normal tracking-normal text-white sm:text-[34px]">{title}</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-white/55">{subtitle}</p>
         </div>
         {status && <StatusBadge tone="violet" pulse>{status}</StatusBadge>}

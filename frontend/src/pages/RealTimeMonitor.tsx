@@ -21,19 +21,19 @@ const RealTimeMonitor: React.FC = () => {
 
   return (
     <WindowFrame
-      title="Live Activity Stream"
+      title="实时活动流"
       subtitle="终端式活动流，用于观察本地任务、Profile 和队列状态变化。"
-      status="Streaming"
+      status="正在监听"
     >
       <div className="grid gap-5 xl:grid-cols-[1fr_320px]">
         <Card className="overflow-hidden">
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <div>
-                <CardTitle>Activity Console</CardTitle>
+                <CardTitle>活动控制台</CardTitle>
                 <CardDescription>最近 10 条系统活动会自动刷新。</CardDescription>
               </div>
-              <StatusBadge tone="success" pulse>Live</StatusBadge>
+              <StatusBadge tone="success" pulse>实时</StatusBadge>
             </div>
           </CardHeader>
           <CardContent className="p-0">
@@ -54,7 +54,7 @@ const RealTimeMonitor: React.FC = () => {
         <div className="grid gap-5">
           <Card>
             <CardHeader>
-              <CardTitle>Signal</CardTitle>
+              <CardTitle>信号</CardTitle>
               <CardDescription>当前活动流连接状态。</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
@@ -65,7 +65,7 @@ const RealTimeMonitor: React.FC = () => {
                 </div>
               </div>
               <div className="flex items-center justify-between rounded-3xl border border-white/[0.07] bg-white/[0.035] px-4 py-3">
-                <span className="text-sm text-white/62">Heartbeat</span>
+                <span className="text-sm text-white/62">心跳</span>
                 <span className="text-sm text-emerald-200">3s</span>
               </div>
             </CardContent>
@@ -77,7 +77,7 @@ const RealTimeMonitor: React.FC = () => {
                 <RiTerminalBoxLine className="size-5" />
               </div>
               <div>
-                <div className="text-sm text-white">WebSocket Ready</div>
+                <div className="text-sm text-white">WebSocket 就绪</div>
                 <div className="mt-1 text-xs text-white/42">后续可替换模拟日志源。</div>
               </div>
               <RiPulseLine className="ml-auto size-5 text-emerald-200" />
