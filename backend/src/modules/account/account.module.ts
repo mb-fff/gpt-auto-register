@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
 import { AccountService } from './account.service';
 import { AccountController } from './account.controller';
+import { PrismaModule } from '../../common/prisma/prisma.module';
 import { DolphinModule } from '../../common/dolphin/dolphin.module';
 
 @Module({
-  imports: [DolphinModule],
+  imports: [PrismaModule, DolphinModule],
   providers: [AccountService],
   controllers: [AccountController],
   exports: [AccountService],
