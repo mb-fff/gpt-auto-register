@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --background: 222 30% 4%;
+  --foreground: 226 100% 98%;
+  --muted: 222 23% 10%;
+  --muted-foreground: 226 30% 68%;
+  --border: 0 0% 100% / 0.08;
+  --input: 0 0% 100% / 0.08;
+  --ring: 236 100% 72%;
+  --primary: 236 100% 72%;
+  --primary-foreground: 226 100% 98%;
+  --secondary: 262 100% 74%;
+  --secondary-foreground: 226 100% 98%;
+  --destructive: 358 88% 62%;
+  --destructive-foreground: 226 100% 98%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: #07090d;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at 18% 8%, rgba(110, 123, 255, 0.28), transparent 28rem),
+    radial-gradient(circle at 82% 18%, rgba(157, 124, 255, 0.22), transparent 26rem),
+    radial-gradient(circle at 54% 88%, rgba(60, 210, 255, 0.08), transparent 32rem),
+    linear-gradient(135deg, #07090d 0%, #0b0f16 48%, #07090d 100%);
+  color: #f5f7ff;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "HarmonyOS Sans", "Segoe UI", sans-serif;
+  letter-spacing: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(110, 123, 255, 0.35);
+  color: #ffffff;
+}
+
+@layer components {
+  .glass-panel {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background:
+      linear-gradient(145deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.025)),
+      rgba(255, 255, 255, 0.04);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(28px) saturate(145%);
+  }
+
+  .glass-hover {
+    transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease, background 220ms ease;
+  }
+
+  .glass-hover:hover {
+    transform: translateY(-3px);
+    border-color: rgba(110, 123, 255, 0.32);
+    box-shadow: 0 28px 96px rgba(0, 0, 0, 0.46), 0 0 44px rgba(110, 123, 255, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.11);
+  }
+
+  .shimmer-border {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .shimmer-border::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background: linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.12) 28%, transparent 46%);
+    transform: translateX(-120%);
+    transition: transform 700ms ease;
+  }
+
+  .shimmer-border:hover::before {
+    transform: translateX(120%);
+  }
+}
