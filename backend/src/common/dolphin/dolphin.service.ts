@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import puppeteer from 'puppeteer-core';
 
 @Injectable()
 export class DolphinService {
@@ -11,33 +12,56 @@ export class DolphinService {
     this.apiBase = this.configService.get<string>('DOLPHIN_API_BASE') || 'http://host.docker.internal:3001';
   }
 
-  /** 创建新的指纹浏览器 Profile */
   async createProfile(name: string, proxy?: string) {
-    this.logger.warn('⚠️【警告】正在创建 Dolphin Anty Profile，仅供本地学习研究使用！');
+    this.logger.warn('⚠️ 创建 Dolphin Profile - 仅供本地学习');
+    const payload: any = {
+      name,
+      os: 'windows',
+      fingerprint: { autoGenerate: true },
+    };
 
-    try {
-      const payload: any = {
-        name,
-        os: 'windows',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
-        fingerprint: { autoGenerate: true },
-      };
-
-      if (proxy) {
-        payload.proxy = { mode: 'http', ...this.parseProxy(proxy) };
-      }
-
-      const response = await axios.post(`${this.apiBase}/v1.0/browser_profiles`, payload);
-      return response.data;
-    } catch (error: any) {
-      this.logger.error('创建 Profile 失败', error.response?.data || error.message);
-      throw error;
+    if (proxy) {
+      payload.proxy = { mode: 'http', ...this.parseProxy(proxy) };
     }
+
+    const res = await axios.post(`${this.apiBase}/v1.0/browser_profiles`, payload);
+    return res.data;
   }
 
-  /** 启动 Profile 并返回自动化信息 */
+  /** 启动 Profile 并返回 CDP 连接信息 */
+  async startProfileWithCDP(profileId: string) {
+    this.logger.log(`启动 Profile ${profileId} 并启用 CDP...`);
+
+    const response = await axios.get(
+      `${this.apiBase}/v1.0/browser_profiles/${profileId}/start?automation=1`
+    );
+
+    const { automation } = response.data;
+
+    if (!automation?.port || !automation?.wsEndpoint) {
+      throw new Error('Dolphin 未返回有效的 CDP 信息');
+    }
+
+    const wsEndpoint = `ws://127.0.0.1:${automation.port}${automation.wsEndpoint}`;
+
+    this.logger.log(`✅ CDP 连接地址: ${wsEndpoint}`);
+
+    return {
+      port: automation.port,
+      wsEndpoint,
+      browser: await this.connectPuppeteer(wsEndpoint),
+    };
+  }
+
   async startProfile(profileId: string) {
-    return axios.get(`${this.apiBase}/v1.0/browser_profiles/${profileId}/start?automation=true`);
+    return this.startProfileWithCDP(profileId);
+  }
+
+  private async connectPuppeteer(wsEndpoint: string) {
+    return puppeteer.connect({
+      browserWSEndpoint: wsEndpoint,
+      defaultViewport: null,
+    });
   }
 
   async stopProfile(profileId: string) {
@@ -45,15 +69,13 @@ export class DolphinService {
   }
 
   private parseProxy(proxyStr: string) {
-    // 支持格式: http://user:pass@ip:port
-    if (!proxyStr) return {};
     try {
-      const url = new URL(proxyStr);
+      const url = new URL(proxyStr.replace('http://', 'http://dummy:'));
       return {
         host: url.hostname,
         port: parseInt(url.port),
-        login: url.username,
-        password: url.password,
+        login: url.username || undefined,
+        password: url.password || undefined,
       };
     } catch {
       return { host: proxyStr };

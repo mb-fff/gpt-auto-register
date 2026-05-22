@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
-import axios from 'axios';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { DolphinService } from '../../common/dolphin/dolphin.service';
 
@@ -13,50 +12,55 @@ export class OAuthService {
     private dolphin: DolphinService,
   ) {}
 
-  /** 生成 PKCE 验证 */
   generatePKCE() {
     const codeVerifier = crypto.randomBytes(32).toString('base64url');
-    const codeChallenge = crypto
-      .createHash('sha256')
-      .update(codeVerifier)
-      .digest('base64url');
+    const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
     return { codeVerifier, codeChallenge };
   }
 
   async startOAuth(accountId: string) {
-    this.logger.warn('🚨【警告】正在执行 OpenAI OAuth 授权流程 - 仅供本地学习使用');
+    this.logger.warn('🚨 执行 OpenAI OAuth CDP 自动化 - 仅供本地学习研究！');
 
     const account = await this.prisma.account.findUnique({ where: { id: accountId } });
     if (!account) throw new Error('账号不存在');
 
-    const { codeVerifier, codeChallenge } = this.generatePKCE();
+    // 1. 启动浏览器并获取 CDP 连接
+    const { browser, wsEndpoint } = await this.dolphin.startProfileWithCDP(account.profileId);
 
-    // 注意：client_id 需要根据实际情况更新（OpenAI 可能变化）
-    const authorizeUrl = `https://auth0.openai.com/authorize?` +
-      `client_id=pdl6t2t4f9a2p2v8p9q8v2q9r8t7u6y` + 
-      `&redirect_uri=https://chat.openai.com` +
-      `&response_type=code` +
-      `&scope=openid%20email%20profile%20offline_access` +
-      `&code_challenge=${codeChallenge}` +
-      `&code_challenge_method=S256`;
+    try {
+      const page = await browser.newPage();
 
-    // 启动指纹浏览器
-    await this.dolphin.startProfile(account.profileId);
+      const { codeVerifier, codeChallenge } = this.generatePKCE();
 
-    this.logger.log(`浏览器已启动，请手动或自动化完成登录: ${authorizeUrl}`);
+      const authorizeUrl = `https://auth0.openai.com/authorize?` +
+        `client_id=pdl6t2t4f9a2p2v8p9q8v2q9r8t7u6y` + // 请替换为最新 client_id
+        `&redirect_uri=https://chat.openai.com` +
+        `&response_type=code` +
+        `&scope=openid email profile offline_access` +
+        `&code_challenge=${codeChallenge}` +
+        `&code_challenge_method=S256`;
 
-    // TODO: 后续可接入 CDP 实现全自动
-    // 当前使用 Mock Refresh Token
-    const mockRefreshToken = `rt_${Date.now()}_${crypto.randomBytes(20).toString('hex')}`;
+      await page.goto(authorizeUrl, { waitUntil: 'networkidle2' });
 
-    await this.prisma.account.update({
-      where: { id: accountId },
-      data: {
-        refreshToken: mockRefreshToken,
-        status: 'success',
-      },
-    });
+      this.logger.log('✅ 已打开 OpenAI 授权页面');
 
-    return { refreshToken: mockRefreshToken };
+      // TODO: 这里可以继续添加自动化逻辑：
+      // await page.type('input[type="email"]', account.email);
+      // await page.click('button[type="submit"]');
+      // ... 处理登录、验证码等
+
+      // 当前先 Mock（后续可继续完善）
+      const mockRefreshToken = `rt_${Date.now()}_${crypto.randomBytes(16).toString('hex')}`;
+
+      await this.prisma.account.update({
+        where: { id: accountId },
+        data: { refreshToken: mockRefreshToken, status: 'success' },
+      });
+
+      return { refreshToken: mockRefreshToken, wsEndpoint };
+    } finally {
+      // 可选择不立即关闭浏览器，让用户手动操作
+      // await browser.close();
+    }
   }
 }
