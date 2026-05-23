@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
+import { Job, Queue } from 'bullmq';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 @Injectable()
@@ -36,6 +36,52 @@ export class TaskService {
       waiting: await this.registerQueue.getWaitingCount(),
       active: await this.registerQueue.getActiveCount(),
       completed: await this.registerQueue.getCompletedCount(),
+      failed: await this.registerQueue.getFailedCount(),
+      delayed: await this.registerQueue.getDelayedCount(),
     };
+  }
+
+  async getRecentJobs(limit = 20) {
+    const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+    const jobs = await this.registerQueue.getJobs(
+      ['active', 'waiting', 'delayed', 'completed', 'failed'],
+      0,
+      safeLimit - 1,
+      false,
+    );
+
+    return Promise.all(jobs.map(job => this.serializeJob(job)));
+  }
+
+  private async serializeJob(job: Job) {
+    const state = await job.getState();
+    const logs = await this.registerQueue.getJobLogs(job.id || '', 0, 10, true);
+
+    return {
+      id: job.id,
+      name: job.name,
+      state,
+      progress: this.normalizeProgress(job.progress),
+      data: {
+        count: job.data?.count,
+        proxy: job.data?.proxy,
+      },
+      attemptsMade: job.attemptsMade,
+      attemptsTotal: job.opts.attempts || 1,
+      failedReason: job.failedReason,
+      returnvalue: job.returnvalue,
+      timestamp: job.timestamp,
+      processedOn: job.processedOn,
+      finishedOn: job.finishedOn,
+      logs: logs.logs,
+    };
+  }
+
+  private normalizeProgress(progress: Job['progress']) {
+    if (typeof progress === 'number') {
+      return { percent: progress };
+    }
+
+    return progress || { percent: 0 };
   }
 }

@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query } from '@nestjs/common';
 import { TaskService } from './task.service';
 
 @Controller('tasks')
@@ -13,5 +13,10 @@ export class TaskController {
   @Get('status')
   getStatus() {
     return this.taskService.getQueueStatus();
+  }
+
+  @Get('jobs')
+  getJobs(@Query('limit') limit?: string) {
+    return this.taskService.getRecentJobs(limit ? Number(limit) : 20);
   }
 }

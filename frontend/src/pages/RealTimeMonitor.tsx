@@ -1,52 +1,118 @@
 import React, { useEffect, useState } from 'react';
-import { RiPulseLine, RiRadioButtonLine, RiTerminalBoxLine } from '@remixicon/react';
+import axios from 'axios';
+import {
+  RiCheckboxCircleLine,
+  RiErrorWarningLine,
+  RiLoader4Line,
+  RiPulseLine,
+  RiRadioButtonLine,
+  RiTerminalBoxLine,
+  RiTimeLine,
+} from '@remixicon/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { MetricOrb } from '../components/os/MetricOrb';
 import { StatusBadge } from '../components/os/StatusBadge';
 import { WindowFrame } from '../components/os/WindowFrame';
+import {
+  TaskJob,
+  QueueStatus,
+  emptyQueueStatus,
+  formatJobTime,
+  getJobStateLabel,
+  getJobStateTone,
+} from '../lib/taskTypes';
 
 const RealTimeMonitor: React.FC = () => {
-  const [logs, setLogs] = useState<string[]>([
-    '系统启动完成',
-    'Dolphin Anty API 连接成功',
-    '等待任务执行...',
-  ]);
+  const [status, setStatus] = useState<QueueStatus>(emptyQueueStatus);
+  const [jobs, setJobs] = useState<TaskJob[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
 
-  // 模拟实时日志（实际可换成 WebSocket）
+  const fetchQueueSnapshot = async () => {
+    try {
+      const [statusRes, jobsRes] = await Promise.all([
+        axios.get<QueueStatus>('/api/tasks/status'),
+        axios.get<TaskJob[]>('/api/tasks/jobs?limit=20'),
+      ]);
+      setStatus({ ...emptyQueueStatus, ...statusRes.data });
+      setJobs(jobsRes.data || []);
+      setLastUpdatedAt(new Date());
+    } catch (error) {
+      console.error('获取任务监控失败', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const interval = setInterval(() => {
-      setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] 任务状态更新...`].slice(-10));
-    }, 3000);
+    fetchQueueSnapshot();
+    const interval = setInterval(fetchQueueSnapshot, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  const activityItems = jobs.flatMap(job => {
+    const base = {
+      id: job.id || 'unknown',
+      state: job.state,
+      time: job.finishedOn || job.processedOn || job.timestamp,
+    };
+
+    if (job.logs?.length) {
+      return job.logs.map((log, index) => ({
+        ...base,
+        key: `${base.id}-${index}-${log}`,
+        text: log,
+      }));
+    }
+
+    return [{
+      ...base,
+      key: `${base.id}-state`,
+      text: job.progress?.message || `任务 #${job.id} ${getJobStateLabel(job.state)}`,
+    }];
+  }).slice(0, 18);
 
   return (
     <WindowFrame
       title="实时活动流"
-      subtitle="终端式活动流，用于观察本地任务、Profile 和队列状态变化。"
-      status="正在监听"
+      subtitle="从 BullMQ 队列读取真实任务状态、进度和执行日志。"
+      status={loading ? '连接中' : '正在监听'}
     >
+      <div className="mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricOrb label="排队任务" value={status.waiting + status.delayed} icon={<RiTimeLine />} tone="blue" />
+        <MetricOrb label="执行中" value={status.active} icon={<RiLoader4Line />} tone="amber" />
+        <MetricOrb label="已完成" value={status.completed} icon={<RiCheckboxCircleLine />} tone="green" />
+        <MetricOrb label="失败任务" value={status.failed} icon={<RiErrorWarningLine />} tone="purple" />
+      </div>
+
       <div className="grid gap-5 xl:grid-cols-[1fr_320px]">
         <Card className="overflow-hidden">
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <div>
                 <CardTitle>活动控制台</CardTitle>
-                <CardDescription>最近 10 条系统活动会自动刷新。</CardDescription>
+                <CardDescription>每 3 秒刷新最近任务事件。</CardDescription>
               </div>
-              <StatusBadge tone="success" pulse>实时</StatusBadge>
+              <StatusBadge tone="success" pulse>{lastUpdatedAt ? lastUpdatedAt.toLocaleTimeString() : '等待数据'}</StatusBadge>
             </div>
           </CardHeader>
           <CardContent className="p-0">
             <div className="border-t border-white/[0.07] bg-black/18 p-4 font-mono">
-              {logs.map((item, index) => (
+              {activityItems.length ? activityItems.map(item => (
                 <div
-                  key={`${item}-${index}`}
+                  key={item.key}
                   className="flex items-start gap-3 rounded-2xl px-3 py-3 text-sm text-white/68 transition-all hover:bg-white/[0.045] hover:text-white"
                 >
                   <span className="mt-1 size-2 rounded-full bg-[#6E7BFF] shadow-[0_0_18px_rgba(110,123,255,0.85)]" />
-                  <span className="min-w-0 flex-1 break-words">{item}</span>
+                  <span className="w-20 shrink-0 text-xs text-white/35">{formatJobTime(item.time)}</span>
+                  <span className="min-w-0 flex-1 break-words">{item.text}</span>
+                  <StatusBadge tone={getJobStateTone(item.state)}>{getJobStateLabel(item.state)}</StatusBadge>
                 </div>
-              ))}
+              )) : (
+                <div className="rounded-2xl px-3 py-8 text-center text-sm text-white/42">
+                  暂无任务事件。提交任务后，这里会显示真实队列日志。
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -68,6 +134,10 @@ const RealTimeMonitor: React.FC = () => {
                 <span className="text-sm text-white/62">心跳</span>
                 <span className="text-sm text-emerald-200">3s</span>
               </div>
+              <div className="flex items-center justify-between rounded-3xl border border-white/[0.07] bg-white/[0.035] px-4 py-3">
+                <span className="text-sm text-white/62">最近任务</span>
+                <span className="text-sm text-white">{jobs.length}</span>
+              </div>
             </CardContent>
           </Card>
 
@@ -77,8 +147,8 @@ const RealTimeMonitor: React.FC = () => {
                 <RiTerminalBoxLine className="size-5" />
               </div>
               <div>
-                <div className="text-sm text-white">WebSocket 就绪</div>
-                <div className="mt-1 text-xs text-white/42">后续可替换模拟日志源。</div>
+                <div className="text-sm text-white">队列轮询已连接</div>
+                <div className="mt-1 text-xs text-white/42">数据来自 /tasks/status 和 /tasks/jobs。</div>
               </div>
               <RiPulseLine className="ml-auto size-5 text-emerald-200" />
             </CardContent>

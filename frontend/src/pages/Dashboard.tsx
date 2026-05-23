@@ -14,6 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { MetricOrb } from '../components/os/MetricOrb';
 import { StatusBadge } from '../components/os/StatusBadge';
 import { WindowFrame } from '../components/os/WindowFrame';
+import { QueueStatus, emptyQueueStatus } from '../lib/taskTypes';
 
 const Dashboard: React.FC = () => {
   const [stats, setStats] = useState({
@@ -22,16 +23,25 @@ const Dashboard: React.FC = () => {
     running: 0,
     today: 0,
   });
+  const [queueStatus, setQueueStatus] = useState<QueueStatus>(emptyQueueStatus);
 
   const fetchStats = async () => {
     try {
-      const res = await axios.get('/api/accounts');
+      const [accountsRes, queueRes] = await Promise.all([
+        axios.get('/api/accounts'),
+        axios.get<QueueStatus>('/api/tasks/status'),
+      ]);
+      const accounts = accountsRes.data || [];
+      const todayKey = new Date().toDateString();
+      const queue = { ...emptyQueueStatus, ...queueRes.data };
+
       setStats({
-        total: res.data.length,
-        success: res.data.filter((a: any) => a.status === 'success').length,
-        running: 3, // 模拟
-        today: 12,
+        total: accounts.length,
+        success: accounts.filter((a: any) => a.status === 'success').length,
+        running: queue.active,
+        today: accounts.filter((a: any) => a.createdAt && new Date(a.createdAt).toDateString() === todayKey).length,
       });
+      setQueueStatus(queue);
     } catch (err) {
       console.error(err);
     }
@@ -102,7 +112,7 @@ const Dashboard: React.FC = () => {
             {[
               { label: 'Dolphin Profile 桥接', value: '待本地 Dolphin API 响应', text: '检查中', tone: 'violet' },
               { label: '账号资产库', value: `已索引 ${stats.total} 个账号`, text: '正常', tone: 'success' },
-              { label: '注册队列', value: `${stats.running} 个模拟运行任务`, text: '运行中', tone: 'warning' },
+              { label: '注册队列', value: `${queueStatus.waiting} 排队 / ${queueStatus.active} 执行 / ${queueStatus.failed} 失败`, text: queueStatus.active ? '运行中' : '待命', tone: queueStatus.failed ? 'danger' : queueStatus.active ? 'warning' : 'success' },
               { label: 'Refresh Token 导出', value: '存在 RT 时可导出 auth.json', text: '待命', tone: 'neutral' },
             ].map(item => (
               <div key={item.label} className="flex items-center justify-between gap-4 rounded-3xl border border-white/[0.07] bg-white/[0.035] px-4 py-3">
