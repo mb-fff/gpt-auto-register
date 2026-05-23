@@ -30,13 +30,18 @@ export class RegisterProcessor extends WorkerHost {
       await job.updateProgress({ percent: 45, stage: 'OAuth 授权', message: '账号已创建，准备启动授权流程', accountId: account.id });
       await job.log(`账号已创建: ${account.email}`);
 
-      await this.oauthService.startOAuth(account.id);
+      const oauthResult = await this.oauthService.startOAuth(account.id);
 
-      await job.updateProgress({ percent: 100, stage: '完成', message: '授权流程完成，Refresh Token 已写入账号', accountId: account.id });
-      await job.log('任务完成，Refresh Token 已写入账号');
+      if (oauthResult.success) {
+        await job.updateProgress({ percent: 100, stage: '完成', message: '授权流程完成', accountId: account.id });
+        await job.log('任务完成');
+      } else {
+        await job.updateProgress({ percent: 70, stage: '等待授权', message: oauthResult.message, accountId: account.id });
+        await job.log(oauthResult.message);
+      }
 
-      this.logger.log(`✅ 任务 #${job.data.count} 执行成功`);
-      return { success: true, accountId: account.id };
+      this.logger.log(`✅ 任务 #${job.data.count} 已创建账号`);
+      return { success: oauthResult.success, accountId: account.id, message: oauthResult.message };
     } catch (error: any) {
       await job.updateProgress({ percent: 100, stage: '失败', message: error.message });
       await job.log(`任务失败: ${error.message}`);
