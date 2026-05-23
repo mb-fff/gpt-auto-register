@@ -7,6 +7,7 @@ import * as crypto from 'crypto';
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
+  private readonly mailboxes = ['INBOX', '[Gmail]/Spam', '[Gmail]/垃圾邮件', '[Gmail]/All Mail', '[Gmail]/所有邮件'];
 
   constructor(private configService: ConfigService) {}
 
@@ -28,51 +29,61 @@ export class EmailService {
       },
     });
 
-    await client.connect();
-    const lock = await client.getMailboxLock('INBOX');
+    try {
+      await client.connect();
 
-    return new Promise((resolve) => {
-      let settled = false;
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        const code = await this.findCodeInMailboxes(client, email);
+        if (code) return code;
+        await this.delay(5000);
+      }
 
-      const cleanup = async () => {
-        if (settled) return;
-        settled = true;
-        lock.release();
-        await client.logout();
-      };
+      this.logger.warn('⏰ 等待验证码超时');
+      return null;
+    } finally {
+      await client.logout().catch(() => undefined);
+    }
+  }
 
-      const timer = setTimeout(async () => {
-        this.logger.warn('⏰ 等待验证码超时');
-        await cleanup();
-        resolve(null);
-      }, timeoutMs);
-
-      client.on('exists', async () => {
+  private async findCodeInMailboxes(client: ImapFlow, email: string): Promise<string | null> {
+    for (const mailbox of this.mailboxes) {
+      try {
+        const lock = await client.getMailboxLock(mailbox);
         try {
-          const messages = await client.fetch({ seen: false }, { source: true, flags: true });
-
-          for await (const msg of messages) {
-            const parsed = await simpleParser(msg.source);
-            const recipients = Array.isArray(parsed.to)
-              ? parsed.to.map(item => item.text).join(',')
-              : parsed.to?.text || '';
-
-            if (recipients.includes(email.split('@')[0])) {
-              const code = this.extractCode(parsed.text || parsed.subject || '');
-              if (code) {
-                this.logger.log(`✅ 成功提取验证码: ${code}`);
-                clearTimeout(timer);
-                await cleanup();
-                resolve(code);
-                return;
-              }
-            }
-          }
-        } catch (error) {
-          this.logger.error('解析邮件失败', error);
+          const code = await this.findCodeInCurrentMailbox(client, email);
+          if (code) return code;
+        } finally {
+          lock.release();
         }
-      });
-    });
+      } catch (error: any) {
+        this.logger.debug(`跳过不可用邮箱目录 ${mailbox}: ${error.message}`);
+      }
+    }
+
+    return null;
+  }
+
+  private async findCodeInCurrentMailbox(client: ImapFlow, email: string): Promise<string | null> {
+    const messages = await client.fetch({ seen: false }, { source: true, flags: true });
+
+    for await (const msg of messages) {
+      const parsed = await simpleParser(msg.source);
+      const recipients = Array.isArray(parsed.to)
+        ? parsed.to.map(item => item.text).join(',')
+        : parsed.to?.text || '';
+
+      const content = [parsed.text || '', parsed.subject || '', recipients].join('\n');
+      if (!content.includes(email.split('@')[0])) continue;
+
+      const code = this.extractCode(content);
+      if (code) {
+        this.logger.log(`✅ 成功提取验证码: ${code}`);
+        return code;
+      }
+    }
+
+    return null;
   }
 
   private extractCode(text: string): string | null {
@@ -86,5 +97,9 @@ export class EmailService {
       throw new Error(`缺少环境变量: ${key}`);
     }
     return value;
+  }
+
+  private delay(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
