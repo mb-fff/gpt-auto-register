@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Delete, Query } from '@nestjs/common';
 import { AccountService } from './account.service';
 
 @Controller('accounts')
@@ -11,8 +11,25 @@ export class AccountController {
   }
 
   @Get()
-  findAll() {
-    return this.accountService.findAll();
+  findAll(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('search') search?: string,
+  ) {
+    if (!page && !pageSize && !search) {
+      return this.accountService.findAllLegacy();
+    }
+
+    return this.accountService.findAll({
+      page: Number(page) || 1,
+      pageSize: Number(pageSize) || 10,
+      search,
+    });
+  }
+
+  @Delete('batch')
+  removeMany(@Body() body: { ids: string[] }) {
+    return this.accountService.deleteMany(body.ids || []);
   }
 
   @Get(':id')
