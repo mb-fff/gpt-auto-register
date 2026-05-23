@@ -2,6 +2,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import axios from 'axios';
+import { Page } from 'puppeteer-core';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { DolphinService } from '../../common/dolphin/dolphin.service';
 import { EmailService } from '../../common/email/email.service';
@@ -74,7 +75,7 @@ export class OAuthService {
 
       if (verificationCode) {
         this.logger.log(`✅ 收到验证码: ${verificationCode}`);
-        // 可在此处继续自动化输入验证码
+        await this.fillVerificationCode(page, verificationCode);
       }
 
       // 等待用户手动完成剩余流程（手机验证等）
@@ -136,5 +137,118 @@ export class OAuthService {
     } finally {
       // 保留浏览器窗口用于调试
     }
+  }
+
+  private async fillVerificationCode(page: Page, code: string) {
+    this.logger.log('🔐 开始自动填写邮箱验证码');
+
+    const filled = await this.tryFillSplitCodeInputs(page, code) || await this.tryFillSingleCodeInput(page, code);
+    if (!filled) {
+      this.logger.warn('⚠️ 未找到验证码输入框，请手动填写验证码');
+      return;
+    }
+
+    await this.submitVerificationCode(page);
+    this.logger.log('✅ 验证码已提交');
+  }
+
+  private async tryFillSplitCodeInputs(page: Page, code: string) {
+    const inputSelectors = [
+      'input[inputmode="numeric"]',
+      'input[autocomplete="one-time-code"]',
+      'input[aria-label*="code" i]',
+      'input[name*="code" i]',
+      'input[id*="code" i]',
+    ];
+
+    for (const selector of inputSelectors) {
+      const inputs = await page.$$(selector);
+      if (inputs.length < code.length) continue;
+
+      for (let index = 0; index < code.length; index++) {
+        await this.clearFocusedInput(page, inputs[index]);
+        await inputs[index].type(code[index], { delay: 60 });
+      }
+
+      return true;
+    }
+
+    return false;
+  }
+
+  private async tryFillSingleCodeInput(page: Page, code: string) {
+    const selectors = [
+      'input[autocomplete="one-time-code"]',
+      'input[inputmode="numeric"]',
+      'input[type="tel"]',
+      'input[type="text"][name*="code" i]',
+      'input[type="text"][id*="code" i]',
+      'input[type="text"]',
+    ];
+
+    for (const selector of selectors) {
+      const input = await page.$(selector);
+      if (!input) continue;
+
+      await this.clearFocusedInput(page, input);
+      await input.type(code, { delay: 80 });
+      return true;
+    }
+
+    return false;
+  }
+
+  private async submitVerificationCode(page: Page) {
+    const buttonSelectors = [
+      'button[type="submit"]',
+      'button[data-testid*="continue" i]',
+      'button[data-testid*="submit" i]',
+      'button',
+    ];
+
+    for (const selector of buttonSelectors) {
+      const clicked = await page.$$eval(selector, (buttons) => {
+        const candidates = buttons.filter((button) => {
+          const text = button.textContent?.toLowerCase() || '';
+          const disabled = button.hasAttribute('disabled') || button.getAttribute('aria-disabled') === 'true';
+          return !disabled && (
+            text.includes('continue') ||
+            text.includes('next') ||
+            text.includes('submit') ||
+            text.includes('verify') ||
+            text.includes('继续') ||
+            text.includes('下一步') ||
+            text.includes('验证') ||
+            text.includes('提交')
+          );
+        });
+
+        const button = candidates[0] as HTMLElement | undefined;
+        if (!button) return false;
+        button.click();
+        return true;
+      });
+
+      if (clicked) {
+        await this.delay(3000);
+        return;
+      }
+    }
+
+    await page.keyboard.press('Enter');
+    await this.delay(3000);
+  }
+
+  private delay(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  private async clearFocusedInput(page: Page, input: Awaited<ReturnType<Page['$']>>) {
+    if (!input) return;
+    await input.click();
+    await page.keyboard.down('Control');
+    await page.keyboard.press('A');
+    await page.keyboard.up('Control');
+    await page.keyboard.press('Backspace');
   }
 }
