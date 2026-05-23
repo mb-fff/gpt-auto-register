@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
@@ -12,6 +13,7 @@ import {
   RiRadioButtonLine,
   RiRefreshLine,
   RiRestartLine,
+  RiUserSearchLine,
   RiTerminalBoxLine,
   RiTimeLine,
 } from '@remixicon/react';
@@ -85,6 +87,8 @@ const RealTimeMonitor: React.FC = () => {
     const label = type === 'all' ? '历史任务' : type === 'failed' ? '失败任务' : '已完成任务';
     runQueueAction(`clean-${type}`, () => axios.post('/api/tasks/clean', { type, limit: 200 }), `${label}已清理`);
   };
+
+  const getJobAccountId = (job: TaskJob) => job.returnvalue?.accountId || job.progress?.accountId;
 
   const activityItems = jobs.flatMap(job => {
     const base = {
@@ -227,6 +231,14 @@ const RealTimeMonitor: React.FC = () => {
                     </div>
                   )}
                   <div className="mt-3 flex flex-wrap gap-2">
+                    {getJobAccountId(job) && (
+                      <Link to={`/accounts/${getJobAccountId(job)}`}>
+                        <Button size="sm" variant="primary">
+                          <RiUserSearchLine className="size-4" />
+                          查看账号
+                        </Button>
+                      </Link>
+                    )}
                     {(job.state === 'failed' || job.state === 'completed') && (
                       <Button size="sm" variant="secondary" disabled={acting === `retry-${job.id}`} onClick={() => retryJob(job.id)}>
                         <RiRestartLine className="size-4" />

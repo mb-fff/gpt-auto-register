@@ -12,6 +12,7 @@ import {
 } from '@remixicon/react';
 import Dashboard from './pages/Dashboard';
 import Accounts from './pages/Accounts';
+import AccountDetail from './pages/AccountDetail';
 import Tasks from './pages/Tasks';
 import RealTimeMonitor from './pages/RealTimeMonitor';
 import { Toaster } from './components/ui/sonner';
@@ -113,6 +114,7 @@ function Shell() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/accounts" element={<Accounts />} />
+            <Route path="/accounts/:id" element={<AccountDetail />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/monitor" element={<RealTimeMonitor />} />
           </Routes>

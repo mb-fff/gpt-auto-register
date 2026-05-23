@@ -10,6 +10,7 @@ import {
   RiPlayCircleLine,
   RiRadarLine,
   RiRocket2Line,
+  RiUserSearchLine,
 } from '@remixicon/react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -66,6 +67,8 @@ const Tasks: React.FC = () => {
       setActing(null);
     }
   };
+
+  const getJobAccountId = (job: TaskJob) => job.returnvalue?.accountId || job.progress?.accountId;
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -269,6 +272,16 @@ const Tasks: React.FC = () => {
                   {job.failedReason && (
                     <div className="mt-3 rounded-2xl border border-red-300/15 bg-red-500/10 px-3 py-2 text-xs text-red-100/80">
                       {job.failedReason}
+                    </div>
+                  )}
+                  {getJobAccountId(job) && (
+                    <div className="mt-3">
+                      <Link to={`/accounts/${getJobAccountId(job)}`}>
+                        <Button size="sm" variant="primary">
+                          <RiUserSearchLine className="size-4" />
+                          查看账号
+                        </Button>
+                      </Link>
                     </div>
                   )}
                 </div>
