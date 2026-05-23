@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Query } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, Param, Delete } from '@nestjs/common';
 import { TaskService } from './task.service';
 
 @Controller('tasks')
@@ -18,5 +18,30 @@ export class TaskController {
   @Get('jobs')
   getJobs(@Query('limit') limit?: string) {
     return this.taskService.getRecentJobs(limit ? Number(limit) : 20);
+  }
+
+  @Post('jobs/:id/retry')
+  retryJob(@Param('id') id: string) {
+    return this.taskService.retryJob(id);
+  }
+
+  @Delete('jobs/:id')
+  removeJob(@Param('id') id: string) {
+    return this.taskService.removeJob(id);
+  }
+
+  @Post('pause')
+  pauseQueue() {
+    return this.taskService.pauseQueue();
+  }
+
+  @Post('resume')
+  resumeQueue() {
+    return this.taskService.resumeQueue();
+  }
+
+  @Post('clean')
+  cleanJobs(@Body() body: { type?: 'completed' | 'failed' | 'all'; grace?: number; limit?: number }) {
+    return this.taskService.cleanJobs(body?.type || 'completed', body?.grace, body?.limit);
   }
 }

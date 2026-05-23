@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   RiArrowRightLine,
   RiFlashlightLine,
   RiInformationLine,
   RiLinksLine,
   RiLoopRightLine,
+  RiPauseCircleLine,
+  RiPlayCircleLine,
+  RiRadarLine,
   RiRocket2Line,
 } from '@remixicon/react';
 import axios from 'axios';
@@ -29,6 +33,7 @@ const Tasks: React.FC = () => {
   const [lastJobs, setLastJobs] = useState<string[]>([]);
   const [status, setStatus] = useState<QueueStatus>(emptyQueueStatus);
   const [recentJobs, setRecentJobs] = useState<TaskJob[]>([]);
+  const [acting, setActing] = useState<string | null>(null);
 
   const fetchQueueSnapshot = async () => {
     try {
@@ -48,6 +53,19 @@ const Tasks: React.FC = () => {
     const interval = setInterval(fetchQueueSnapshot, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  const runQueueAction = async (key: string, request: () => Promise<unknown>, successMessage: string) => {
+    setActing(key);
+    try {
+      await request();
+      toast.success(successMessage);
+      await fetchQueueSnapshot();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || '操作失败');
+    } finally {
+      setActing(null);
+    }
+  };
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -145,24 +163,51 @@ const Tasks: React.FC = () => {
                   <CardTitle>队列状态</CardTitle>
                   <CardDescription>真实队列快照，每 5 秒刷新。</CardDescription>
                 </div>
-                <StatusBadge tone={status.active ? 'warning' : 'success'} pulse={!!status.active}>
-                  {status.active ? '执行中' : '待命'}
+                <StatusBadge tone={status.paused ? 'violet' : status.active ? 'warning' : 'success'} pulse={!status.paused && !!status.active}>
+                  {status.paused ? '已暂停' : status.active ? '执行中' : '待命'}
                 </StatusBadge>
               </div>
             </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-              {[
-                ['排队', status.waiting],
-                ['执行', status.active],
-                ['延迟', status.delayed],
-                ['完成', status.completed],
-                ['失败', status.failed],
-              ].map(([label, value]) => (
-                <div key={label as string} className="rounded-3xl border border-white/[0.07] bg-white/[0.035] p-3 text-center">
-                  <div className="text-2xl font-normal text-white">{value as number}</div>
-                  <div className="mt-1 text-xs text-white/42">{label as string}</div>
-                </div>
-              ))}
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                {[
+                  ['排队', status.waiting],
+                  ['执行', status.active],
+                  ['延迟', status.delayed],
+                  ['完成', status.completed],
+                  ['失败', status.failed],
+                ].map(([label, value]) => (
+                  <div key={label as string} className="rounded-3xl border border-white/[0.07] bg-white/[0.035] p-3 text-center">
+                    <div className="text-2xl font-normal text-white">{value as number}</div>
+                    <div className="mt-1 text-xs text-white/42">{label as string}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {status.paused ? (
+                  <Button size="sm" variant="primary" disabled={acting === 'resume'} onClick={() => runQueueAction('resume', () => axios.post('/api/tasks/resume'), '队列已恢复')}>
+                    <RiPlayCircleLine className="size-4" />
+                    恢复队列
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="secondary" disabled={acting === 'pause'} onClick={() => runQueueAction('pause', () => axios.post('/api/tasks/pause'), '队列已暂停')}>
+                    <RiPauseCircleLine className="size-4" />
+                    暂停队列
+                  </Button>
+                )}
+                <Button size="sm" variant="ghost" disabled={acting === 'clean-completed'} onClick={() => runQueueAction('clean-completed', () => axios.post('/api/tasks/clean', { type: 'completed', limit: 200 }), '已清理完成任务')}>
+                  清理完成
+                </Button>
+                <Button size="sm" variant="ghost" disabled={acting === 'clean-failed'} onClick={() => runQueueAction('clean-failed', () => axios.post('/api/tasks/clean', { type: 'failed', limit: 200 }), '已清理失败任务')}>
+                  清理失败
+                </Button>
+                <Link to="/monitor">
+                  <Button size="sm" variant="secondary">
+                    <RiRadarLine className="size-4" />
+                    打开活动流
+                  </Button>
+                </Link>
+              </div>
             </CardContent>
           </Card>
 

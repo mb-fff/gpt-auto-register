@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -38,6 +38,7 @@ export class TaskService {
       completed: await this.registerQueue.getCompletedCount(),
       failed: await this.registerQueue.getFailedCount(),
       delayed: await this.registerQueue.getDelayedCount(),
+      paused: await this.registerQueue.isPaused(),
     };
   }
 
@@ -83,5 +84,81 @@ export class TaskService {
     }
 
     return progress || { percent: 0 };
+  }
+
+  async retryJob(jobId: string) {
+    const job = await this.getExistingJob(jobId);
+    const state = await job.getState();
+
+    if (state !== 'failed' && state !== 'completed') {
+      throw new BadRequestException(`当前任务状态为 ${state}，仅支持重试 failed/completed 任务`);
+    }
+
+    await job.retry(state as 'failed' | 'completed');
+    await job.log(`任务已手动重试，来源状态: ${state}`);
+
+    return {
+      message: '任务已重新加入队列',
+      job: await this.serializeJob(job),
+    };
+  }
+
+  async removeJob(jobId: string) {
+    const job = await this.getExistingJob(jobId);
+    const state = await job.getState();
+
+    try {
+      await job.remove({ removeChildren: true });
+    } catch (error: any) {
+      throw new BadRequestException(error.message || '删除任务失败');
+    }
+
+    return {
+      message: '任务已删除',
+      jobId,
+      previousState: state,
+    };
+  }
+
+  async pauseQueue() {
+    await this.registerQueue.pause();
+    return {
+      message: '队列已暂停',
+      paused: await this.registerQueue.isPaused(),
+    };
+  }
+
+  async resumeQueue() {
+    await this.registerQueue.resume();
+    return {
+      message: '队列已恢复',
+      paused: await this.registerQueue.isPaused(),
+    };
+  }
+
+  async cleanJobs(type: 'completed' | 'failed' | 'all' = 'completed', grace = 0, limit = 100) {
+    const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 1000);
+    const safeGrace = Math.max(Number(grace) || 0, 0);
+    const types = type === 'all' ? ['completed', 'failed'] as const : [type];
+    const removed: Record<string, string[]> = {};
+
+    for (const jobType of types) {
+      removed[jobType] = await this.registerQueue.clean(safeGrace, safeLimit, jobType);
+    }
+
+    return {
+      message: '清理完成',
+      removed,
+      total: Object.values(removed).reduce((sum, ids) => sum + ids.length, 0),
+    };
+  }
+
+  private async getExistingJob(jobId: string) {
+    const job = await this.registerQueue.getJob(jobId);
+    if (!job) {
+      throw new NotFoundException(`任务不存在: ${jobId}`);
+    }
+
+    return job;
   }
 }

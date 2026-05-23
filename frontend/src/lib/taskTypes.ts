@@ -4,6 +4,7 @@ export interface QueueStatus {
   completed: number;
   failed: number;
   delayed: number;
+  paused: boolean;
 }
 
 export interface TaskJobProgress {
@@ -41,6 +42,7 @@ export const emptyQueueStatus: QueueStatus = {
   completed: 0,
   failed: 0,
   delayed: 0,
+  paused: false,
 };
 
 export function getJobStateLabel(state: TaskJob['state']) {
