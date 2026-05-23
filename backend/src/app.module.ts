@@ -6,6 +6,7 @@ import { EmailModule } from './common/email/email.module';
 import { AccountModule } from './modules/account/account.module';
 import { TaskModule } from './modules/task/task.module';
 import { OAuthModule } from './modules/oauth/oauth.module';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { OAuthModule } from './modules/oauth/oauth.module';
     AccountModule,
     TaskModule,
     OAuthModule,
+    HealthModule,
   ],
 })
 export class AppModule { }

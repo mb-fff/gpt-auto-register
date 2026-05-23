@@ -6,6 +6,7 @@ import {
   RiPulseLine,
   RiRobot2Line,
   RiSearch2Line,
+  RiSettings4Line,
   RiShieldCheckLine,
   RiSparkling2Line,
   RiTerminalBoxLine,
@@ -15,6 +16,7 @@ import Accounts from './pages/Accounts';
 import AccountDetail from './pages/AccountDetail';
 import Tasks from './pages/Tasks';
 import RealTimeMonitor from './pages/RealTimeMonitor';
+import Diagnostics from './pages/Diagnostics';
 import { Toaster } from './components/ui/sonner';
 import { cn } from './lib/utils';
 
@@ -23,6 +25,7 @@ const navItems = [
   { path: '/accounts', label: '账号库', cnLabel: '账号库', icon: RiFingerprintLine },
   { path: '/tasks', label: '任务舱', cnLabel: '任务舱', icon: RiRobot2Line },
   { path: '/monitor', label: '活动流', cnLabel: '活动流', icon: RiTerminalBoxLine },
+  { path: '/diagnostics', label: '系统诊断', cnLabel: '诊断', icon: RiSettings4Line },
 ];
 
 function Shell() {
@@ -91,7 +94,7 @@ function Shell() {
               </div>
             </div>
 
-            <nav className="grid grid-cols-4 gap-2 lg:hidden">
+            <nav className="grid grid-cols-5 gap-2 lg:hidden">
               {navItems.map(item => {
                 const Icon = item.icon;
                 const isActive = item.path === location.pathname;
@@ -117,6 +120,7 @@ function Shell() {
             <Route path="/accounts/:id" element={<AccountDetail />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/monitor" element={<RealTimeMonitor />} />
+            <Route path="/diagnostics" element={<Diagnostics />} />
           </Routes>
 
           <footer className="pb-2 text-center text-xs text-white/34">

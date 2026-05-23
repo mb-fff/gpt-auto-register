@@ -15,6 +15,7 @@ import { MetricOrb } from '../components/os/MetricOrb';
 import { StatusBadge } from '../components/os/StatusBadge';
 import { WindowFrame } from '../components/os/WindowFrame';
 import { QueueStatus, emptyQueueStatus } from '../lib/taskTypes';
+import { HealthOverview, getHealthLabel, getHealthTone } from '../lib/healthTypes';
 
 const Dashboard: React.FC = () => {
   const [stats, setStats] = useState({
@@ -24,12 +25,14 @@ const Dashboard: React.FC = () => {
     today: 0,
   });
   const [queueStatus, setQueueStatus] = useState<QueueStatus>(emptyQueueStatus);
+  const [health, setHealth] = useState<HealthOverview | null>(null);
 
   const fetchStats = async () => {
     try {
-      const [accountsRes, queueRes] = await Promise.all([
+      const [accountsRes, queueRes, healthRes] = await Promise.all([
         axios.get('/api/accounts'),
         axios.get<QueueStatus>('/api/tasks/status'),
+        axios.get<HealthOverview>('/api/health'),
       ]);
       const accounts = accountsRes.data || [];
       const todayKey = new Date().toDateString();
@@ -42,6 +45,7 @@ const Dashboard: React.FC = () => {
         today: accounts.filter((a: any) => a.createdAt && new Date(a.createdAt).toDateString() === todayKey).length,
       });
       setQueueStatus(queue);
+      setHealth(healthRes.data);
     } catch (err) {
       console.error(err);
     }
@@ -110,7 +114,7 @@ const Dashboard: React.FC = () => {
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             {[
-              { label: 'Dolphin Profile 桥接', value: '待本地 Dolphin API 响应', text: '检查中', tone: 'violet' },
+              { label: '系统诊断', value: health ? `配置 ${getHealthLabel(health.config.status)} / 服务 ${getHealthLabel(health.services.status)}` : '等待诊断数据', text: health ? getHealthLabel(health.status) : '检查中', tone: health ? getHealthTone(health.status) : 'violet' },
               { label: '账号资产库', value: `已索引 ${stats.total} 个账号`, text: '正常', tone: 'success' },
               { label: '注册队列', value: `${queueStatus.waiting} 排队 / ${queueStatus.active} 执行 / ${queueStatus.failed} 失败`, text: queueStatus.active ? '运行中' : '待命', tone: queueStatus.failed ? 'danger' : queueStatus.active ? 'warning' : 'success' },
               { label: 'Refresh Token 导出', value: '存在 RT 时可导出 auth.json', text: '待命', tone: 'neutral' },
