@@ -195,6 +195,8 @@ export class BrowserProfileService {
     const payload: any = {
       id: '',
       name,
+      proxyMethod: 2,
+      proxyType: 'noproxy',
       browserFingerPrint: {
         coreVersion: '124',
         ostype: 'Windows',
