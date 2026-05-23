@@ -24,13 +24,22 @@ services:
     build: ./backend
     command: sh -c "pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm run dev"
     restart: always
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/gptar?schema=public
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_URL: redis://redis:6379
       JWT_SECRET: super-secret-change-me-please
+      BROWSER_PROVIDER: ${BROWSER_PROVIDER:-dolphin}
+      BROWSER_CDP_HOST: ${BROWSER_CDP_HOST:-host.docker.internal}
       DOLPHIN_API_BASE: http://host.docker.internal:3001
+      HUBSTUDIO_API_BASE: ${HUBSTUDIO_API_BASE:-http://host.docker.internal:6873}
+      HUBSTUDIO_GROUP_CODE: ${HUBSTUDIO_GROUP_CODE:-}
+      HUBSTUDIO_APP_ID: ${HUBSTUDIO_APP_ID:-}
+      HUBSTUDIO_APP_SECRET: ${HUBSTUDIO_APP_SECRET:-}
+      BITBROWSER_API_BASE: ${BITBROWSER_API_BASE:-http://host.docker.internal:54345}
       EMAIL_DOMAIN: ${EMAIL_DOMAIN:-example.com}
       IMAP_HOST: ${IMAP_HOST:-imap.gmail.com}
       IMAP_PORT: ${IMAP_PORT:-993}

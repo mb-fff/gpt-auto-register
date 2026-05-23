@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import axios from 'axios';
 import Redis from 'ioredis';
 import { ImapFlow } from 'imapflow';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { BrowserProfileService } from '../../common/dolphin/browser-profile.service';
 
 export type HealthStatus = 'ok' | 'warn' | 'error';
 
@@ -20,14 +20,31 @@ export class HealthService {
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly browserProfileService: BrowserProfileService,
   ) {}
 
   getConfigHealth() {
+    const provider = this.browserProfileService.getProvider();
     const checks: HealthCheck[] = [
       this.requiredEnv('DATABASE_URL', 'PostgreSQL 连接串'),
       this.requiredEnv('REDIS_HOST', 'Redis 主机'),
       this.requiredEnv('REDIS_PORT', 'Redis 端口'),
-      this.requiredEnv('DOLPHIN_API_BASE', 'Dolphin API 地址', { reveal: true }),
+      this.optionalEnv('BROWSER_PROVIDER', '浏览器 Provider', '未配置时默认 dolphin'),
+      ...(provider === 'bitbrowser'
+        ? [
+          this.requiredEnv('BITBROWSER_API_BASE', 'BitBrowser API 地址', { reveal: true }),
+        ]
+        : provider === 'hubstudio'
+        ? [
+          this.requiredEnv('HUBSTUDIO_API_BASE', 'Hubstudio API 地址', { reveal: true }),
+          this.requiredEnv('HUBSTUDIO_GROUP_CODE', 'Hubstudio 分组 Code', { reveal: true }),
+          this.optionalEnv('HUBSTUDIO_APP_ID', 'Hubstudio App ID', '本地 API 模式可能不需要'),
+          this.optionalEnv('HUBSTUDIO_APP_SECRET', 'Hubstudio App Secret', '本地 API 模式可能不需要'),
+        ]
+        : [
+          this.requiredEnv('DOLPHIN_API_BASE', 'Dolphin API 地址', { reveal: true }),
+        ]),
+      this.optionalEnv('BROWSER_CDP_HOST', '浏览器 CDP Host', '未配置时默认 host.docker.internal'),
       this.requiredEnv('EMAIL_DOMAIN', '临时邮箱域名', { reveal: true }),
       this.requiredEnv('IMAP_HOST', 'IMAP 主机', { reveal: true }),
       this.requiredEnv('IMAP_USER', 'IMAP 账号', { reveal: true }),
@@ -46,7 +63,7 @@ export class HealthService {
     const checks = await Promise.all([
       this.checkDatabase(),
       this.checkRedis(),
-      this.checkDolphin(),
+      this.checkBrowserProvider(),
       this.checkImap(),
     ]);
 
@@ -109,29 +126,37 @@ export class HealthService {
     }
   }
 
-  private async checkDolphin(): Promise<HealthCheck> {
-    const apiBase = this.configService.get<string>('DOLPHIN_API_BASE') || 'http://host.docker.internal:3001';
-    const startedAt = Date.now();
-
+  private async checkBrowserProvider(): Promise<HealthCheck> {
     try {
-      const response = await axios.get(apiBase, {
-        timeout: 3500,
-        validateStatus: () => true,
-      });
+      const result = await this.browserProfileService.checkProviderHealth();
+      const label = result.provider === 'bitbrowser'
+        ? 'BitBrowser API'
+        : result.provider === 'hubstudio'
+          ? 'Hubstudio API'
+          : 'Dolphin API';
 
       return {
-        key: 'dolphin',
-        label: 'Dolphin API',
-        status: response.status >= 500 ? 'warn' : 'ok',
-        message: response.status >= 500 ? `Dolphin 有响应但状态异常: ${response.status}` : 'Dolphin API 可达',
+        key: 'browserProvider',
+        label,
+        status: result.httpStatus >= 500 ? 'warn' : 'ok',
+        message: result.httpStatus >= 500 ? `${label} 有响应但状态异常: ${result.httpStatus}` : `${label} 可达`,
         details: {
-          apiBase,
-          httpStatus: response.status,
-          latencyMs: Date.now() - startedAt,
+          provider: result.provider,
+          apiBase: result.apiBase,
+          httpStatus: result.httpStatus,
+          latencyMs: result.latencyMs,
         },
       };
     } catch (error: any) {
-      return this.errorCheck('dolphin', 'Dolphin API', 'Dolphin API 不可达', error, { apiBase });
+      const provider = this.browserProfileService.getProvider();
+      const label = provider === 'bitbrowser'
+        ? 'BitBrowser API'
+        : provider === 'hubstudio'
+          ? 'Hubstudio API'
+          : 'Dolphin API';
+      return this.errorCheck('browserProvider', label, `${label} 不可达`, error, {
+        provider,
+      });
     }
   }
 
