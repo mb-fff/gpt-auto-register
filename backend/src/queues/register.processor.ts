@@ -1,3 +1,4 @@
+// backend/src/queues/register.processor.ts
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
@@ -16,37 +17,31 @@ export class RegisterProcessor extends WorkerHost {
   }
 
   async process(job: Job) {
-    this.logger.log(`🚀 开始处理注册任务 #${job.data.count}`);
+    this.logger.warn(`🚀 开始执行真实注册任务 #${job.data.count}（已关闭安全占位模式）`);
 
     try {
-      await job.updateProgress({ percent: 10, stage: '创建账号', message: '正在创建本地账号和 Dolphin Profile' });
-      await job.log('开始创建账号和 Dolphin Profile');
-
+      // 创建账号记录
       const account = await this.accountService.createAccount(
-        `test${Date.now() + job.data.count}@example.com`,
+        `temp-${Date.now()}-${job.data.count}@example.com`, // 后续会被临时邮箱覆盖
         job.data.proxy
       );
 
-      await job.updateProgress({ percent: 45, stage: 'OAuth 授权', message: '账号已创建，准备启动授权流程', accountId: account.id });
-      await job.log(`账号已创建: ${account.email}`);
+      this.logger.log(`账号创建完成 ID: ${account.id}`);
 
-      const oauthResult = await this.oauthService.startOAuth(account.id);
+      // === 关键：调用真实完整自动化流程 ===
+      const result = await this.oauthService.startFullAutoRegister(account.id);
 
-      if (oauthResult.success) {
-        await job.updateProgress({ percent: 100, stage: '完成', message: '授权流程完成', accountId: account.id });
-        await job.log('任务完成');
-      } else {
-        await job.updateProgress({ percent: 70, stage: '等待授权', message: oauthResult.message, accountId: account.id });
-        await job.log(oauthResult.message);
-      }
+      this.logger.log(`✅ 任务 #${job.data.count} 执行成功！已获取真实 RT`);
 
-      this.logger.log(`✅ 任务 #${job.data.count} 已创建账号`);
-      return { success: oauthResult.success, accountId: account.id, message: oauthResult.message };
+      return {
+        success: true,
+        accountId: account.id,
+        refreshToken: result.refreshToken,
+        email: result.email,
+      };
     } catch (error: any) {
-      await job.updateProgress({ percent: 100, stage: '失败', message: error.message });
-      await job.log(`任务失败: ${error.message}`);
-      this.logger.error(`❌ 任务失败: ${error.message}`);
-      throw error;
+      this.logger.error(`❌ 任务 #${job.data.count} 失败: ${error.message}`);
+      throw error; // 让 BullMQ 进行重试
     }
   }
 }

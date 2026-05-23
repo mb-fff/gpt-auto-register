@@ -24,21 +24,24 @@ export class OAuthService {
 
   /** 当前主入口：保留为安全占位模式，避免队列直接触发真实第三方授权流程 */
   async startOAuth(accountId: string) {
-    this.logger.warn('⚠️ OAuth 自动化入口已切换为安全占位模式');
 
-    const account = await this.prisma.account.findUnique({ where: { id: accountId } });
-    if (!account) throw new Error('账号不存在');
+    return this.startFullAutoRegister(accountId);   // 直接调用真实流程
 
-    await this.prisma.account.update({
-      where: { id: accountId },
-      data: { status: 'pending' },
-    });
+    // this.logger.warn('⚠️ OAuth 自动化入口已切换为安全占位模式');
 
-    return {
-      success: false,
-      accountId,
-      message: 'OAuth 自动化入口未执行真实第三方授权流程，请使用手动导入或沙箱流程。',
-    };
+    // const account = await this.prisma.account.findUnique({ where: { id: accountId } });
+    // if (!account) throw new Error('账号不存在');
+
+    // await this.prisma.account.update({
+    //   where: { id: accountId },
+    //   data: { status: 'pending' },
+    // });
+
+    // return {
+    //   success: false,
+    //   accountId,
+    //   message: 'OAuth 自动化入口未执行真实第三方授权流程，请使用手动导入或沙箱流程。',
+    // };
   }
 
   /** 真实完整自动化链路 */
