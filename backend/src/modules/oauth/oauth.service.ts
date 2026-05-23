@@ -33,11 +33,11 @@ export class OAuthService {
     this.logger.log(`📧 使用临时邮箱: ${tempEmail}`);
 
     const { browser } = await this.dolphin.startProfileWithCDP(account.profileId);
-    let authCode: string | null = null;
 
     try {
       const page = await browser.newPage();
       await page.setViewport({ width: 1400, height: 960 });
+      const codeCapture = this.createAuthorizationCodeCapture(page);
 
       const { codeVerifier, codeChallenge } = this.generatePKCE();
 
@@ -48,18 +48,6 @@ export class OAuthService {
         `&scope=openid%20email%20profile%20offline_access` +
         `&code_challenge=${codeChallenge}` +
         `&code_challenge_method=S256`;
-
-      // 拦截 authorization code
-      page.on('response', (response) => {
-        const url = response.url();
-        if (url.includes('code=') && !authCode) {
-          try {
-            const urlObj = new URL(url);
-            authCode = urlObj.searchParams.get('code');
-            if (authCode) this.logger.log(`✅ 成功拦截 authorization_code`);
-          } catch (e) { }
-        }
-      });
 
       await page.goto(authorizeUrl, { waitUntil: 'networkidle2' });
 
@@ -78,11 +66,12 @@ export class OAuthService {
         await this.fillVerificationCode(page, verificationCode);
       }
 
-      // 等待用户手动完成剩余流程（手机验证等）
-      this.logger.log('⏳ 请在浏览器中完成剩余验证...（等待 90 秒）');
-      await new Promise(r => setTimeout(r, 90000));
+      this.logger.log('⏳ 等待授权回调 code，如出现手机验证请在浏览器中完成');
+      const authCode = await codeCapture.waitForCode(120000);
 
       if (!authCode) {
+        const currentUrl = page.url();
+        this.logger.warn(`⚠️ 等待 authorization code 超时，当前页面: ${currentUrl}`);
         throw new Error('未能拦截到 authorization code');
       }
 
@@ -137,6 +126,64 @@ export class OAuthService {
     } finally {
       // 保留浏览器窗口用于调试
     }
+  }
+
+  private createAuthorizationCodeCapture(page: Page) {
+    let authCode: string | null = null;
+
+    const capture = (rawUrl?: string) => {
+      if (!rawUrl || authCode) return;
+
+      const code = this.extractAuthorizationCode(rawUrl);
+      if (!code) return;
+
+      authCode = code;
+      this.logger.log('✅ 成功捕获 authorization_code');
+    };
+
+    page.on('request', (request) => capture(request.url()));
+    page.on('response', (response) => capture(response.url()));
+    page.on('framenavigated', (frame) => capture(frame.url()));
+
+    return {
+      getCode: () => {
+        capture(page.url());
+        return authCode;
+      },
+      waitForCode: async (timeoutMs: number) => {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+          capture(page.url());
+          if (authCode) return authCode;
+          await this.delay(1000);
+        }
+
+        return authCode;
+      },
+    };
+  }
+
+  private extractAuthorizationCode(rawUrl: string) {
+    if (!rawUrl.includes('code=')) return null;
+
+    try {
+      const url = new URL(rawUrl);
+      const code = url.searchParams.get('code');
+      if (code) return code;
+
+      if (url.hash) {
+        const hashParams = new URLSearchParams(url.hash.replace(/^#/, ''));
+        return hashParams.get('code');
+      }
+    } catch {
+      const queryMatch = rawUrl.match(/[?&]code=([^&#]+)/);
+      if (queryMatch?.[1]) return decodeURIComponent(queryMatch[1]);
+
+      const hashMatch = rawUrl.match(/[#&]code=([^&#]+)/);
+      if (hashMatch?.[1]) return decodeURIComponent(hashMatch[1]);
+    }
+
+    return null;
   }
 
   private async fillVerificationCode(page: Page, code: string) {
