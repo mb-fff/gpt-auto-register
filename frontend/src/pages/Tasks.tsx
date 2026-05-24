@@ -29,6 +29,7 @@ import {
 
 const Tasks: React.FC = () => {
   const [count, setCount] = useState('5');
+  const [retryAttempts, setRetryAttempts] = useState('3');
   const [proxy, setProxy] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [lastJobs, setLastJobs] = useState<string[]>([]);
@@ -77,16 +78,23 @@ const Tasks: React.FC = () => {
       toast.error('请输入有效的注册数量');
       return;
     }
+    const parsedRetryAttempts = parseInt(retryAttempts, 10);
+    if (!parsedRetryAttempts || parsedRetryAttempts < 1 || parsedRetryAttempts > 10) {
+      toast.error('请输入 1 到 10 之间的重试次数');
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await axios.post('/api/tasks/register', {
         count: parsedCount,
+        retryAttempts: parsedRetryAttempts,
         proxy: proxy || undefined,
       });
       setLastJobs(res.data?.jobIds || []);
       toast.success(`成功创建 ${parsedCount} 个注册任务！`);
       await fetchQueueSnapshot();
       setCount('5');
+      setRetryAttempts('3');
       setProxy('');
     } catch (error) {
       toast.error('创建任务失败');
@@ -122,6 +130,18 @@ const Tasks: React.FC = () => {
               </label>
 
               <label className="flex flex-col gap-2">
+                <span className="text-sm text-white/68">重试次数</span>
+                <Input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={retryAttempts}
+                  onChange={event => setRetryAttempts(event.target.value)}
+                  placeholder="1~10"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2">
                 <span className="text-sm text-white/68">代理 (可选)</span>
                 <Input
                   value={proxy}
@@ -146,7 +166,7 @@ const Tasks: React.FC = () => {
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-3">
               {[
-                ['重试策略', '最多 3 次', <RiFlashlightLine className="size-5" />],
+                ['重试策略', `最多 ${retryAttempts || 3} 次`, <RiFlashlightLine className="size-5" />],
                 ['退避间隔', '5 秒指数退避', <RiArrowRightLine className="size-5" />],
                 ['代理状态', proxy ? '已绑定' : '可选', <RiLinksLine className="size-5" />],
               ].map(([label, value, icon]) => (

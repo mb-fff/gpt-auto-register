@@ -22,6 +22,7 @@ export interface TaskJob {
   data?: {
     count?: number;
     proxy?: string;
+    retryAttempts?: number;
   };
   attemptsMade: number;
   attemptsTotal: number;

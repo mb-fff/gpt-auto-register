@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { InjectQueue } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { normalizeRetryAttempts } from './retry-attempts';
 
 @Injectable()
 export class TaskService {
@@ -12,15 +13,16 @@ export class TaskService {
     @InjectQueue('register-queue') private registerQueue: Queue,
   ) {}
 
-  async createRegisterTasks(count: number, proxy?: string) {
+  async createRegisterTasks(count: number, proxy?: string, retryAttempts?: number) {
     this.logger.warn(`⚠️ 创建 ${count} 个注册任务 - 仅供本地学习使用`);
+    const attempts = normalizeRetryAttempts(retryAttempts);
 
     const jobs = [];
     for (let i = 0; i < count; i++) {
       const job = await this.registerQueue.add(
         'register',
-        { count: i + 1, proxy },
-        { attempts: 3, backoff: { type: 'exponential', delay: 5000 } }
+        { count: i + 1, proxy, retryAttempts: attempts },
+        { attempts, backoff: { type: 'exponential', delay: 5000 } }
       );
       jobs.push(job.id);
     }
@@ -66,6 +68,7 @@ export class TaskService {
       data: {
         count: job.data?.count,
         proxy: job.data?.proxy,
+        retryAttempts: job.data?.retryAttempts,
       },
       attemptsMade: job.attemptsMade,
       attemptsTotal: job.opts.attempts || 1,

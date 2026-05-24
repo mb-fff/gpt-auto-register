@@ -6,8 +6,8 @@ export class TaskController {
   constructor(private taskService: TaskService) {}
 
   @Post('register')
-  createRegister(@Body() body: { count: number; proxy?: string }) {
-    return this.taskService.createRegisterTasks(body.count, body.proxy);
+  createRegister(@Body() body: { count: number; proxy?: string; retryAttempts?: number }) {
+    return this.taskService.createRegisterTasks(body.count, body.proxy, body.retryAttempts);
   }
 
   @Get('status')
