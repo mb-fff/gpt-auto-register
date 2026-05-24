@@ -48,7 +48,7 @@ export class OAuthService {
 
       // ==================== 优化后的 URL ====================
       const authorizeUrl = `https://auth0.openai.com/authorize?` +
-        `client_id=pdl6t2t4f9a2p2v8p9q8v2q9r8t7u6y` +   // 经典 client_id
+        `client_id=app_EMoamEEZ73f0CkXaXp7hrann` +   // 经典 client_id
         `&redirect_uri=https%3A%2F%2Fchat.openai.com` +
         `&response_type=code` +
         `&scope=openid%20email%20profile%20offline_access` +
