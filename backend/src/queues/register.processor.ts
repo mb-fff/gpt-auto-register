@@ -5,7 +5,7 @@ import { Job } from 'bullmq';
 import { spawn } from 'child_process';
 import * as path from 'path';
 import { AccountService } from '../modules/account/account.service';
-import { EmailService } from '../../common/email/email.service';
+import { EmailService } from '../common/email/email.service';
 
 @Processor('register-queue')
 export class RegisterProcessor extends WorkerHost {

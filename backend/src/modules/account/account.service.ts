@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { AccountCreateInput, normalizeAccountInput } from './account-input';
 
 @Injectable()
 export class AccountService {
@@ -10,16 +11,18 @@ export class AccountService {
     private prisma: PrismaService,
   ) {}
 
-  async createAccount(email: string, proxy?: string) {
-    this.logger.log(`正在创建账号: ${email}`);
-    const localProfileId = `local-${Date.now()}`;
+  async createAccount(input: string | AccountCreateInput, proxy?: string) {
+    const data = normalizeAccountInput(input, proxy);
+    this.logger.log(`正在创建账号: ${data.email}`);
 
     return this.prisma.account.create({
       data: {
-        email,
-        profileId: localProfileId,
-        proxy,
-        status: 'pending',
+        email: data.email,
+        profileId: data.profileId,
+        proxy: data.proxy,
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken,
+        status: data.status,
       },
     });
   }
