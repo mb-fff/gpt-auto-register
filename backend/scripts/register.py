@@ -18,9 +18,6 @@ from curl_cffi import requests as curl_requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-# 【注意】这里保留你的接码平台服务引入，请确保你的目录结构能正常 import
-from services.register import mail_provider
-
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- 全局常量配置 ---
@@ -260,8 +257,9 @@ def request_with_local_retry(session: requests.Session, method: str, url: str, r
 
 # --- 业务注册流程封装 ---
 class PlatformRegistrar:
-    def __init__(self, proxy: str = "") -> None:
+    def __init__(self, proxy: str = "", email: str = "") -> None:
         self.proxy = proxy
+        self.email = email  # Node.js 传进来的邮箱
         self.session = create_session(proxy)
         self.device_id = str(uuid.uuid4())
 
@@ -296,12 +294,11 @@ class PlatformRegistrar:
         step(index, "验证码校验完成")
 
     def register(self, index: int) -> dict:
-        step(index, "任务启动, 获取邮箱")
-        mailbox = mail_provider.create_mailbox(MAIL_CONFIG)
-        email = str(mailbox.get("address") or "").strip()
+
+        email = self.email
         if not email:
-            raise RuntimeError("邮箱服务未返回 address")
-        step(index, f"邮箱获取成功: {email}")
+            raise RuntimeError("未提供邮箱参数")
+        step(index, f"使用指定邮箱启动任务: {email}")
 
         password = _random_password()
         first_name, last_name = _random_name()
@@ -349,11 +346,18 @@ class PlatformRegistrar:
             raise RuntimeError(f"send_otp_failed: {error}")
 
         # 4. Wait for Code & Validate
-        step(index, "等待接码平台回传验证码...")
-        code = mail_provider.wait_for_code(MAIL_CONFIG, mailbox)
-        if not code:
-            raise RuntimeError("等待验证码超时")
+        step(index, "准备通知 Node.js 开始收件...")
         
+        # 打印特定的握手密语，触发 Node.js 收邮件
+        print("WAITING_FOR_OTP", flush=True)
+        
+        # Python 进程在这里挂起，阻塞等待 Node.js 从 stdin 写入的验证码
+        code = sys.stdin.readline().strip()
+        
+        if not code:
+            raise RuntimeError("未从 Node.js (stdin) 接收到验证码，流已关闭")
+        
+        step(index, f"成功从 Node.js 接收到验证码: {code}")
         self._validate_otp(code, index)
 
         # 5. Create Account Details

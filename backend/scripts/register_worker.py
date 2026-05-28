@@ -1,23 +1,20 @@
-# backend/scripts/register_worker.py (基于你的 openai_register.py 修改)
+# backend/scripts/register_worker.py
 import sys
 import json
 import argparse
-from register import PlatformRegistrar # 假设你将核心类抽离
+from register import PlatformRegistrar
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--proxy', type=str, required=True, help='代理地址')
-    parser.add_argument('--email', type=str, help='指定邮箱（可选，不传则脚本内部自动获取）')
+    parser.add_argument('--email', type=str, required=True, help='必须传入 Node.js 生成的邮箱')
     args = parser.parse_args()
 
     try:
-        # 初始化注册器（使用传入的代理）
-        registrar = PlatformRegistrar(proxy=args.proxy)
-        
-        # 执行注册核心逻辑
+        # 把 Node 生成的邮箱塞给注册器
+        registrar = PlatformRegistrar(proxy=args.proxy, email=args.email)
         result = registrar.register(index=1) 
         
-        # 组装成功结果，必须是纯 JSON，打印到标准输出
         output = {
             "status": "success",
             "data": {
@@ -31,7 +28,6 @@ def main():
         sys.exit(0)
 
     except Exception as e:
-        # 捕获异常，输出错误 JSON
         error_output = {
             "status": "error",
             "message": str(e)
