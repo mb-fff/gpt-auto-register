@@ -121,16 +121,6 @@ def _response_json(resp) -> dict:
     except Exception:
         return {}
 
-def _decode_jwt_payload(token: str) -> dict:
-    try:
-        payload = token.split(".")[1]
-        padding = 4 - len(payload) % 4
-        if padding != 4:
-            payload += "=" * padding
-        return json.loads(base64.urlsafe_b64decode(payload))
-    except Exception:
-        return {}
-
 # --- 核心网络与加密逻辑 ---
 class SentinelTokenGenerator:
     MAX_ATTEMPTS = 500000
@@ -368,34 +358,71 @@ class PlatformRegistrar:
         if resp is None or resp.status_code not in (200, 302):
             raise RuntimeError(f"create_account_details_failed: {error}")
 
-        # 6. Exchange Token (这里简化了原有极其冗长的登录校验流程，直接使用 OAuth Code 换 Token)
-        # 注意: 真实的 OAuth 换 Token 逻辑依赖之前存入 Cookie 的 auth session，在这里继续调用 oauth/token 接口
-        step(index, "提取并交换 Access Token")
-        # 直接使用我们之前创建的 code_verifier
+        # 6. Exchange Token (标准 PKCE 授权码流程)
+        step(index, "提取并交换 Access Token (PKCE)")
         try:
-            # 在实际业务中，通过上一步返回的 Cookie/Session，重新走一遍 authorize 拿到 code，然后调 /oauth/token
-            # 此处的精简版逻辑依然通过 OAuth 提取 Token (与原逻辑 `exchange_platform_tokens` 等价但更紧凑)
+            auth_code = ""
             
-            # 为了确保成功率，我们保留原有 `_login_and_exchange_tokens` 的重定向获取 Code 逻辑
-            resp = create_session(self.proxy).post(
+            # 使用已通过鉴权的 session 重新请求 authorize，并抓取 302 重定向里的 code
+            params = {
+                "issuer": auth_base,
+                "client_id": platform_oauth_client_id,
+                "audience": platform_oauth_audience,
+                "redirect_uri": platform_oauth_redirect_uri,
+                "device_id": self.device_id,
+                "screen_hint": "login_or_signup",
+                "max_age": "0",
+                "login_hint": email,
+                "scope": "openid profile email offline_access",
+                "response_type": "code",
+                "response_mode": "query",
+                "state": secrets.token_urlsafe(32),
+                "nonce": secrets.token_urlsafe(32),
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
+                "auth0Client": platform_auth0_client,
+            }
+            
+            # 注意：此处禁止自动重定向 (allow_redirects=False)，以便我们提取 Location
+            auth_resp, _ = request_with_local_retry(
+                self.session, 
+                "get", 
+                f"{auth_base}/api/accounts/authorize?{urlencode(params)}", 
+                headers=self._navigate_headers(f"{auth_base}/about-you"), 
+                allow_redirects=False,
+                verify=False
+            )
+
+            # 拦截 302 跳转提取 code
+            if auth_resp is not None and auth_resp.status_code in (302, 303):
+                location = auth_resp.headers.get("Location", "")
+                parsed_url = urlparse(location)
+                auth_code = parse_qs(parsed_url.query).get("code", [""])[0]
+
+            if not auth_code:
+                raise RuntimeError("未能从重定向流中提取到 Auth Code，可能触发了额外的设备验证")
+
+            step(index, "成功获取到 Auth Code，正在换取 JWT")
+
+            # 使用 code 和最初始的 code_verifier 换取双 Token
+            token_resp, error = request_with_local_retry(
+                self.session,
+                "post",
                 f"{auth_base}/oauth/token",
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                data={
-                    "grant_type": "password",  # OpenAI 当前支持直接通过密码获取 token 或者 code 换
-                    "username": email,
-                    "password": password,
-                    "audience": platform_oauth_audience,
+                headers={"Content-Type": "application/json"},
+                json={
+                    "grant_type": "authorization_code",
                     "client_id": platform_oauth_client_id,
-                    "scope": "openid profile email offline_access"
+                    "code": auth_code,
+                    "code_verifier": code_verifier,
+                    "redirect_uri": platform_oauth_redirect_uri,
                 },
-                verify=False,
-                timeout=30,
+                verify=False
             )
             
-            # 如果 grant_type=password 不行，需要用原本原封不动的 auth session cookie 提取
-            data = _response_json(resp)
-            if resp.status_code != 200 or not data.get("access_token"):
-                 raise RuntimeError(f"Token交换失败，可能触发进一步的设备验证: {data}")
+            data = _response_json(token_resp)
+            if token_resp is None or token_resp.status_code != 200 or not data.get("access_token"):
+                 raise RuntimeError(f"Token交换失败 (HTTP {getattr(token_resp, 'status_code', 'unknown')}): {data}")
 
             return {
                 "email": email,
