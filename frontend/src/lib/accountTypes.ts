@@ -4,6 +4,9 @@ export interface Account {
   profileId: string;
   proxy?: string | null;
   status: string;
+  accessToken?: string | null;
+  refreshToken?: string | null;
+  rtExpiresAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

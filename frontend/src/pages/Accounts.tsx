@@ -5,6 +5,7 @@ import {
   RiCheckboxBlankCircleLine,
   RiCheckboxCircleLine,
   RiDeleteBin6Line,
+  RiFileCopyLine,
   RiShieldUserLine,
   RiRefreshLine,
   RiSearch2Line,
@@ -17,6 +18,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
 import { StatusBadge } from '../components/os/StatusBadge';
+import { copyValue, TokenField } from '../components/os/TokenField';
 import { WindowFrame } from '../components/os/WindowFrame';
 import { Account, getAccountStatusTone } from '../lib/accountTypes';
 import { cn } from '../lib/utils';
@@ -198,15 +200,6 @@ const Accounts: React.FC = () => {
             </div>
           </div>
 
-          <div className="hidden grid-cols-[0.16fr_1.1fr_1fr_0.62fr_0.9fr_0.8fr] gap-4 border-b border-white/[0.07] px-5 py-4 text-xs font-medium tracking-normal text-white/38 lg:grid">
-            <span />
-            <span>账号</span>
-            <span>代理</span>
-            <span>状态</span>
-            <span>创建时间</span>
-            <span className="text-right">操作</span>
-          </div>
-
           <div className="divide-y divide-white/[0.06]">
             {loading && (
               <div className="p-8 text-center text-sm text-white/48">正在同步账号资产...</div>
@@ -222,44 +215,67 @@ const Accounts: React.FC = () => {
               const selected = selectedIds.includes(account.id);
 
               return (
-                <div
-                  key={account.id}
-                  className={cn(
-                    'grid gap-4 px-5 py-4 transition-all hover:bg-white/[0.045] lg:grid-cols-[0.16fr_1.1fr_1fr_0.62fr_0.9fr_0.8fr] lg:items-center',
-                    selected && 'bg-[#6E7BFF]/[0.08]'
-                  )}
-                >
-                  <button
-                    type="button"
-                    onClick={() => toggleAccount(account.id)}
-                    className="inline-flex size-9 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.04] text-white/45 transition-all hover:text-white"
-                    aria-label={selected ? '取消选择账号' : '选择账号'}
-                  >
-                    {selected ? <RiCheckboxCircleLine className="size-5 text-[#9D7CFF]" /> : <RiCheckboxBlankCircleLine className="size-5" />}
-                  </button>
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-white">{account.email}</div>
-                    <div className="mt-1 truncate text-xs text-white/38">{account.proxy || '未绑定代理'}</div>
-                  </div>
-                  <div className="min-w-0 rounded-2xl border border-white/[0.07] bg-white/[0.035] px-3 py-2 text-xs text-white/55">
-                    <span className="block truncate">{account.proxy || '未绑定代理'}</span>
-                  </div>
-                  <StatusBadge tone={getAccountStatusTone(account.status) as any} pulse={account.status === 'success'}>
-                    {account.status}
-                  </StatusBadge>
-                  <div className="text-xs text-white/45">{new Date(account.createdAt).toLocaleString()}</div>
-                  <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
-                    <Link to={`/accounts/${account.id}`}>
-                      <Button size="sm" variant="secondary">
-                        查看详情
-                      </Button>
-                    </Link>
-                    <Button size="sm" variant="danger" onClick={() => setDeleteTarget(account)} disabled={deleting === account.id}>
-                      <RiDeleteBin6Line className="size-4" />
-                      删除
-                    </Button>
-                  </div>
-                </div>
+	                <div
+	                  key={account.id}
+	                  className={cn(
+	                    'min-w-0 px-5 py-4 transition-all hover:bg-white/[0.045]',
+	                    selected && 'bg-[#6E7BFF]/[0.08]'
+	                  )}
+	                >
+                    <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleAccount(account.id)}
+                          className="mt-1 inline-flex size-9 shrink-0 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.04] text-white/45 transition-all hover:text-white"
+                          aria-label={selected ? '取消选择账号' : '选择账号'}
+                        >
+                          {selected ? <RiCheckboxCircleLine className="size-5 text-[#9D7CFF]" /> : <RiCheckboxBlankCircleLine className="size-5" />}
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => copyValue('账号名', account.email)}
+                              className="min-w-0 truncate text-left text-sm font-medium text-white transition-colors hover:text-emerald-100"
+                              title={account.email}
+                            >
+                              {account.email}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => copyValue('账号名', account.email)}
+                              className="inline-flex size-7 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.05] text-white/45 transition-all hover:border-white/16 hover:bg-white/[0.09] hover:text-white"
+                              aria-label="复制账号名"
+                              title="复制账号名"
+                            >
+                              <RiFileCopyLine className="size-3.5" />
+                            </button>
+                          </div>
+                          <div className="mt-1 truncate text-xs text-white/38">{account.proxy || '未绑定代理'}</div>
+                          <div className="mt-1 text-xs text-white/32">{new Date(account.createdAt).toLocaleString()}</div>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        <StatusBadge tone={getAccountStatusTone(account.status) as any} pulse={account.status === 'success'}>
+                          {account.status}
+                        </StatusBadge>
+                        <Link to={`/accounts/${account.id}`}>
+                          <Button size="sm" variant="secondary">
+                            查看详情
+                          </Button>
+                        </Link>
+                        <Button size="sm" variant="danger" onClick={() => setDeleteTarget(account)} disabled={deleting === account.id}>
+                          <RiDeleteBin6Line className="size-4" />
+                          删除
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid min-w-0 gap-3 xl:grid-cols-2">
+                      <TokenField label="Access Token" value={account.accessToken} compact />
+                      <TokenField label="Refresh Token" value={account.refreshToken} compact />
+                    </div>
+	                </div>
               );
             })}
           </div>

@@ -6,6 +6,7 @@ import {
   RiArrowLeftLine,
   RiCalendarLine,
   RiErrorWarningLine,
+  RiFileCopyLine,
   RiLinksLine,
   RiRefreshLine,
   RiShieldCheckLine,
@@ -14,6 +15,7 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { MetricOrb } from '../components/os/MetricOrb';
 import { StatusBadge } from '../components/os/StatusBadge';
+import { copyValue, TokenField } from '../components/os/TokenField';
 import { WindowFrame } from '../components/os/WindowFrame';
 import { Account, getAccountStatusTone } from '../lib/accountTypes';
 
@@ -96,9 +98,20 @@ const AccountDetail: React.FC = () => {
             <Card>
               <CardHeader>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <CardTitle className="truncate">{account.email}</CardTitle>
-                    <CardDescription>账号资产详情和本地状态。</CardDescription>
+	                  <div className="min-w-0">
+	                    <div className="flex min-w-0 items-center gap-2">
+	                      <CardTitle className="truncate">{account.email}</CardTitle>
+	                      <button
+	                        type="button"
+	                        onClick={() => copyValue('账号名', account.email)}
+	                        className="inline-flex size-8 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.05] text-white/45 transition-all hover:border-white/16 hover:bg-white/[0.09] hover:text-white"
+	                        aria-label="复制账号名"
+	                        title="复制账号名"
+	                      >
+	                        <RiFileCopyLine className="size-4" />
+	                      </button>
+	                    </div>
+	                    <CardDescription>账号资产详情和本地状态。</CardDescription>
                   </div>
                   <StatusBadge tone={getAccountStatusTone(account.status) as any} pulse={account.status === 'success'}>
                     {account.status}
@@ -116,6 +129,17 @@ const AccountDetail: React.FC = () => {
             </Card>
 
             <div className="grid gap-5">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Token 凭证</CardTitle>
+                  <CardDescription>当前账号任务保存的 Access Token 和 Refresh Token。</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-3">
+                  <TokenField label="Access Token" value={account.accessToken} />
+                  <TokenField label="Refresh Token" value={account.refreshToken} />
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader>
                   <CardTitle>代理配置</CardTitle>
