@@ -10,7 +10,7 @@ import uuid
 import sys
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlencode, urlparse
-from typing import Any
+from typing import Any, Dict, Optional
 
 import requests
 import urllib3
@@ -31,8 +31,6 @@ user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 sec_ch_ua = '"Google Chrome";v="145", "Not?A_Brand";v="8", "Chromium";v="145"'
 sec_ch_ua_full_version_list = '"Chromium";v="145.0.0.0", "Not:A-Brand";v="99.0.0.0", "Google Chrome";v="145.0.0.0"'
 default_timeout = 30
-
-MAIL_CONFIG = {"request_timeout": 30, "wait_timeout": 30, "wait_interval": 2}
 
 common_headers = {
     "accept": "application/json",
@@ -73,11 +71,9 @@ navigate_headers = {
     "upgrade-insecure-requests": "1",
 }
 
-
-# --- 工具函数 ---
-def step(index: int, text: str):
-    """日志统一输出到 stderr，防止污染 stdout 的 JSON 结果"""
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] [Worker-{index}] {text}", file=sys.stderr)
+def step(index: int, text: str, color: str = ""):
+    """标准错误输出，不会污染标准输出的 JSON 结果"""
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] [Worker-{index}] {text}", file=sys.stderr, flush=True)
 
 def _make_trace_headers() -> dict[str, str]:
     trace_id = str(random.getrandbits(64))
@@ -109,7 +105,9 @@ def _random_password(length: int = 16) -> str:
     return "".join(value)
 
 def _random_name() -> tuple[str, str]:
-    return random.choice(["James", "Robert", "John", "Michael", "David", "Mary", "Emma", "Olivia"]), random.choice(["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller"])
+    return random.choice(["James", "Robert", "John", "Michael", "David", "Mary", "Emma", "Olivia"]), random.choice(
+        ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller"]
+    )
 
 def _random_birthdate() -> str:
     return f"{random.randint(1996, 2006):04d}-{random.randint(1, 12):02d}-{random.randint(1, 28):02d}"
@@ -121,7 +119,16 @@ def _response_json(resp) -> dict:
     except Exception:
         return {}
 
-# --- 核心网络与加密逻辑 ---
+def _decode_jwt_payload(token: str) -> dict:
+    try:
+        payload = token.split(".")[1]
+        padding = 4 - len(payload) % 4
+        if padding != 4:
+            payload += "=" * padding
+        return json.loads(base64.urlsafe_b64decode(payload))
+    except Exception:
+        return {}
+
 class SentinelTokenGenerator:
     MAX_ATTEMPTS = 500000
     ERROR_PREFIX = "wQ8Lk5FbGpA2NcR9dShT6gYjU7VxZ4D"
@@ -245,11 +252,117 @@ def request_with_local_retry(session: requests.Session, method: str, url: str, r
             time.sleep(1)
     return None, last_error
 
-# --- 业务注册流程封装 ---
+def validate_otp(session: requests.Session, device_id: str, code: str):
+    headers = dict(common_headers)
+    headers["referer"] = f"{auth_base}/email-verification"
+    headers["oai-device-id"] = device_id
+    headers.update(_make_trace_headers())
+    resp, error = request_with_local_retry(session, "post", f"{auth_base}/api/accounts/email-otp/validate", json={"code": code}, headers=headers, verify=False)
+    if resp is not None and resp.status_code == 200:
+        return resp, ""
+    headers["openai-sentinel-token"] = build_sentinel_token(session, device_id, "authorize_continue")
+    resp, error = request_with_local_retry(session, "post", f"{auth_base}/api/accounts/email-otp/validate", json={"code": code}, headers=headers, verify=False)
+    return resp, error
+
+def extract_oauth_callback_params_from_url(url: str) -> Optional[Dict[str, str]]:
+    if not url:
+        return None
+    try:
+        params = parse_qs(urlparse(url).query)
+    except Exception:
+        return None
+    code = str((params.get("code") or [""])[0]).strip()
+    if not code:
+        return None
+    return {"code": code, "state": str((params.get("state") or [""])[0]).strip(), "scope": str((params.get("scope") or [""])[0]).strip()}
+
+def extract_oauth_callback_params_from_consent_session(session: requests.Session, consent_url: str, device_id: str) -> Optional[Dict[str, str]]:
+    if consent_url.startswith("/"):
+        consent_url = f"{auth_base}{consent_url}"
+    current_url = consent_url
+    for _ in range(10):
+        response = session.get(current_url, headers=navigate_headers, verify=False, timeout=30, allow_redirects=False)
+        callback_params = extract_oauth_callback_params_from_url(str(response.url)) or extract_oauth_callback_params_from_url(str(response.headers.get("Location") or "").strip())
+        if callback_params:
+            return callback_params
+        location = str(response.headers.get("Location") or "").strip()
+        if response.status_code not in (301, 302, 303, 307, 308) or not location:
+            break
+        current_url = f"{auth_base}{location}" if location.startswith("/") else location
+    raw = session.cookies.get("oai-client-auth-session", domain=".auth.openai.com") or session.cookies.get("oai-client-auth-session")
+    if not raw:
+        return None
+    try:
+        first_part = raw.split(".")[0]
+        padding = 4 - len(first_part) % 4
+        if padding != 4:
+            first_part += "=" * padding
+        payload = json.loads(base64.urlsafe_b64decode(first_part))
+        workspace_id = payload["workspaces"][0]["id"]
+    except Exception:
+        return None
+    headers = dict(common_headers)
+    headers["referer"] = consent_url
+    headers["oai-device-id"] = device_id
+    headers.update(_make_trace_headers())
+    ws_resp = session.post(f"{auth_base}/api/accounts/workspace/select", json={"workspace_id": workspace_id}, headers=headers, verify=False, timeout=30, allow_redirects=False)
+    callback_params = extract_oauth_callback_params_from_url(str(ws_resp.headers.get("Location") or "").strip())
+    if callback_params:
+        return callback_params
+    ws_data = _response_json(ws_resp)
+    orgs = ((ws_data.get("data") or {}).get("orgs") or []) if isinstance(ws_data, dict) else []
+    if not orgs:
+        return None
+    org_id = str((orgs[0] or {}).get("id") or "").strip()
+    project_id = str(((orgs[0] or {}).get("projects") or [{}])[0].get("id") or "").strip()
+    if not org_id:
+        return None
+    org_headers = dict(common_headers)
+    org_headers["referer"] = str(ws_data.get("continue_url") or consent_url)
+    org_headers["oai-device-id"] = device_id
+    org_headers.update(_make_trace_headers())
+    body = {"org_id": org_id}
+    if project_id:
+        body["project_id"] = project_id
+    org_resp = session.post(f"{auth_base}/api/accounts/organization/select", json=body, headers=org_headers, verify=False, timeout=30, allow_redirects=False)
+    return extract_oauth_callback_params_from_url(str(org_resp.headers.get("Location") or "").strip())
+
+def exchange_platform_tokens(session: requests.Session, device_id: str, code_verifier: str, consent_url: str, proxy: str) -> Optional[Dict[str, Any]]:
+    callback_params = extract_oauth_callback_params_from_consent_session(session, consent_url, device_id)
+    if not callback_params:
+        return None
+    code = str(callback_params.get("code") or "").strip()
+    if not code:
+        return None
+    resp = create_session(proxy).post(
+        f"{auth_base}/oauth/token",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        data={
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": platform_oauth_redirect_uri,
+            "client_id": platform_oauth_client_id,
+            "code_verifier": code_verifier,
+        },
+        verify=False,
+        timeout=60,
+    )
+    data = _response_json(resp)
+    if resp.status_code != 200 or not data.get("access_token") or not data.get("refresh_token") or not data.get("id_token"):
+        return None
+    payload = _decode_jwt_payload(str(data.get("id_token") or "")) or _decode_jwt_payload(str(data.get("access_token") or ""))
+    return {
+        "email": str(payload.get("email") or "").strip(),
+        "access_token": str(data.get("access_token") or "").strip(),
+        "refresh_token": str(data.get("refresh_token") or "").strip(),
+        "id_token": str(data.get("id_token") or "").strip(),
+    }
+
+
 class PlatformRegistrar:
     def __init__(self, proxy: str = "", email: str = "") -> None:
         self.proxy = proxy
-        self.email = email  # Node.js 传进来的邮箱
+        self.email = email
         self.session = create_session(proxy)
         self.device_id = str(uuid.uuid4())
 
@@ -269,36 +382,19 @@ class PlatformRegistrar:
         headers.update(_make_trace_headers())
         return headers
 
-    def _validate_otp(self, code: str, index: int) -> None:
-        step(index, f"开始校验验证码 {code}")
-        headers = self._json_headers(f"{auth_base}/email-verification")
-        resp, error = request_with_local_retry(self.session, "post", f"{auth_base}/api/accounts/email-otp/validate", json={"code": code}, headers=headers, verify=False)
-        if resp is not None and resp.status_code == 200:
-            step(index, "验证码校验完成")
-            return
-        
-        headers["openai-sentinel-token"] = build_sentinel_token(self.session, self.device_id, "authorize_continue")
-        resp, error = request_with_local_retry(self.session, "post", f"{auth_base}/api/accounts/email-otp/validate", json={"code": code}, headers=headers, verify=False)
-        if resp is None or resp.status_code != 200:
-            raise RuntimeError(error or f"validate_otp_http_{getattr(resp, 'status_code', 'unknown')}")
-        step(index, "验证码校验完成")
+    def _get_ipc_otp(self) -> str:
+        """核心：通过标准输入输出请求 Node.js 发送验证码"""
+        print("WAITING_FOR_OTP", flush=True)
+        code = sys.stdin.readline().strip()
+        if not code:
+            raise RuntimeError("未从 Node.js 接收到验证码，流已关闭")
+        return code
 
-    def register(self, index: int) -> dict:
-
-        email = self.email
-        if not email:
-            raise RuntimeError("未提供邮箱参数")
-        step(index, f"使用指定邮箱启动任务: {email}")
-
-        password = _random_password()
-        first_name, last_name = _random_name()
-
-        # 1. Authorize
-        step(index, "Authorize 初始化")
+    def _platform_authorize(self, email: str, index: int) -> None:
+        step(index, "开始 platform authorize")
         self.session.cookies.set("oai-did", self.device_id, domain=".auth.openai.com")
         self.session.cookies.set("oai-did", self.device_id, domain="auth.openai.com")
-        code_verifier, code_challenge = _generate_pkce()
-        
+        _, code_challenge = _generate_pkce()
         params = {
             "issuer": auth_base,
             "client_id": platform_oauth_client_id,
@@ -319,116 +415,135 @@ class PlatformRegistrar:
         }
         resp, error = request_with_local_retry(self.session, "get", f"{auth_base}/api/accounts/authorize?{urlencode(params)}", headers=self._navigate_headers(f"{platform_base}/"), allow_redirects=True, verify=False)
         if resp is None or resp.status_code != 200:
-            raise RuntimeError(f"platform_authorize_failed: {error}")
+            err = _response_json(resp).get("error", {}) if resp is not None else {}
+            detail = f": {err.get('code', '')} - {err.get('message', '')}".strip(" -") if err else ""
+            raise RuntimeError(error or f"platform_authorize_http_{getattr(resp, 'status_code', 'unknown')}{detail}")
+        step(index, "platform authorize 完成")
 
-        # 2. Register Password
-        step(index, "提交账号与密码")
+    def _register_user(self, email: str, password: str, index: int) -> None:
+        step(index, "开始提交注册密码")
         headers = self._json_headers(f"{auth_base}/create-account/password")
         headers["openai-sentinel-token"] = build_sentinel_token(self.session, self.device_id, "username_password_create")
         resp, error = request_with_local_retry(self.session, "post", f"{auth_base}/api/accounts/user/register", json={"username": email, "password": password}, headers=headers, verify=False)
         if resp is None or resp.status_code != 200:
-            raise RuntimeError(f"user_register_failed: {error}")
+            data = _response_json(resp) if resp is not None else {}
+            if data.get("message") == "Failed to create account. Please try again.":
+                step(index, "注册失败提示: 邮箱域名很可能因滥用被封禁，请更换邮箱域名")
+            detail = f", detail={json.dumps(data, ensure_ascii=False)}" if data else ""
+            raise RuntimeError(error or f"user_register_http_{getattr(resp, 'status_code', 'unknown')}{detail}")
+        step(index, "提交注册密码完成")
 
-        # 3. Send OTP
-        step(index, "触发发送验证码")
+    def _send_otp(self, index: int) -> None:
+        step(index, "开始发送验证码")
         resp, error = request_with_local_retry(self.session, "get", f"{auth_base}/api/accounts/email-otp/send", headers=self._navigate_headers(f"{auth_base}/create-account/password"), allow_redirects=True, verify=False)
         if resp is None or resp.status_code not in (200, 302):
-            raise RuntimeError(f"send_otp_failed: {error}")
+            raise RuntimeError(error or f"send_otp_http_{getattr(resp, 'status_code', 'unknown')}")
+        step(index, "发送验证码完成")
 
-        # 4. Wait for Code & Validate
-        step(index, "准备通知 Node.js 开始收件...")
-        
-        # 打印特定的握手密语，触发 Node.js 收邮件
-        print("WAITING_FOR_OTP", flush=True)
-        
-        # Python 进程在这里挂起，阻塞等待 Node.js 从 stdin 写入的验证码
-        code = sys.stdin.readline().strip()
-        
-        if not code:
-            raise RuntimeError("未从 Node.js (stdin) 接收到验证码，流已关闭")
-        
-        step(index, f"成功从 Node.js 接收到验证码: {code}")
-        self._validate_otp(code, index)
+    def _validate_otp(self, code: str, index: int) -> None:
+        step(index, f"开始校验验证码 {code}")
+        resp, error = validate_otp(self.session, self.device_id, code)
+        if resp is None or resp.status_code != 200:
+            raise RuntimeError(error or f"validate_otp_http_{getattr(resp, 'status_code', 'unknown')}")
+        step(index, "验证码校验完成")
 
-        # 5. Create Account Details
-        step(index, "提交用户身份资料 (About You)")
+    def _create_account(self, name: str, birthdate: str, index: int) -> None:
+        step(index, "开始创建账号资料")
         headers = self._json_headers(f"{auth_base}/about-you")
         headers["openai-sentinel-token"] = build_sentinel_token(self.session, self.device_id, "oauth_create_account")
-        resp, error = request_with_local_retry(self.session, "post", f"{auth_base}/api/accounts/create_account", json={"name": f"{first_name} {last_name}", "birthdate": _random_birthdate()}, headers=headers, verify=False)
+        resp, error = request_with_local_retry(self.session, "post", f"{auth_base}/api/accounts/create_account", json={"name": name, "birthdate": birthdate}, headers=headers, verify=False)
         if resp is None or resp.status_code not in (200, 302):
-            raise RuntimeError(f"create_account_details_failed: {error}")
+            data = _response_json(resp) if resp is not None else {}
+            if data.get("message") == "Failed to create account. Please try again.":
+                step(index, "创建账号失败提示: 邮箱域名很可能因滥用被封禁，请更换邮箱域名")
+            detail = f", detail={json.dumps(data, ensure_ascii=False)}" if data else ""
+            raise RuntimeError(error or f"create_account_http_{getattr(resp, 'status_code', 'unknown')}{detail}")
+        step(index, "创建账号资料完成")
 
-        # 6. Exchange Token (标准 PKCE 授权码流程)
-        step(index, "提取并交换 Access Token (PKCE)")
-        try:
-            auth_code = ""
+    def _login_and_exchange_tokens(self, email: str, password: str, index: int) -> dict:
+        step(index, "开始独立登录换 token")
+        code_verifier, code_challenge = _generate_pkce()
+        params = {
+            "issuer": auth_base,
+            "client_id": platform_oauth_client_id,
+            "audience": platform_oauth_audience,
+            "redirect_uri": platform_oauth_redirect_uri,
+            "device_id": self.device_id,
+            "screen_hint": "login_or_signup",
+            "max_age": "0",
+            "login_hint": email,
+            "scope": "openid profile email offline_access",
+            "response_type": "code",
+            "response_mode": "query",
+            "state": secrets.token_urlsafe(32),
+            "nonce": secrets.token_urlsafe(32),
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+            "auth0Client": platform_auth0_client,
+        }
+        resp, error = request_with_local_retry(self.session, "get", f"{auth_base}/api/accounts/authorize?{urlencode(params)}", headers=self._navigate_headers(f"{platform_base}/"), allow_redirects=True, verify=False)
+        if resp is None:
+            raise RuntimeError(error or "platform_login_authorize_failed")
+        step(index, "登录 authorize 完成")
+        headers = self._json_headers(f"{auth_base}/log-in/password")
+        headers["openai-sentinel-token"] = build_sentinel_token(self.session, self.device_id, "password_verify")
+        resp, error = request_with_local_retry(self.session, "post", f"{auth_base}/api/accounts/password/verify", json={"password": password}, headers=headers, allow_redirects=False, verify=False)
+        if resp is None or resp.status_code != 200:
+            raise RuntimeError(error or f"password_verify_http_{getattr(resp, 'status_code', 'unknown')}")
+        step(index, "密码校验完成")
+        payload = _response_json(resp)
+        continue_url = str(payload.get("continue_url") or "").strip()
+        page_type = str(((payload.get("page") or {}).get("type")) or "")
+        
+        if page_type == "email_otp_verification" or "email-verification" in continue_url or "email-otp" in continue_url:
+            step(index, "独立登录触发风控，需要二次邮箱验证码！")
+            code = self._get_ipc_otp() # 二次触发 Node 接收邮件
+            resp, reason = validate_otp(self.session, self.device_id, code)
+            if resp is None or resp.status_code != 200:
+                data = _response_json(resp) if resp is not None else {}
+                message = str((data.get("error") or {}).get("message") or data.get("message") or "").strip()
+                raise RuntimeError(reason or f"独立登录验证码校验失败{': ' + message if message else ''}")
+            otp_payload = _response_json(resp)
+            continue_url = str(otp_payload.get("continue_url") or continue_url).strip()
+            step(index, "独立登录验证码校验完成")
             
-            # 使用已通过鉴权的 session 重新请求 authorize，并抓取 302 重定向里的 code
-            params = {
-                "issuer": auth_base,
-                "client_id": platform_oauth_client_id,
-                "audience": platform_oauth_audience,
-                "redirect_uri": platform_oauth_redirect_uri,
-                "device_id": self.device_id,
-                "screen_hint": "login_or_signup",
-                "max_age": "0",
-                "login_hint": email,
-                "scope": "openid profile email offline_access",
-                "response_type": "code",
-                "response_mode": "query",
-                "state": secrets.token_urlsafe(32),
-                "nonce": secrets.token_urlsafe(32),
-                "code_challenge": code_challenge,
-                "code_challenge_method": "S256",
-                "auth0Client": platform_auth0_client,
-            }
+        if not continue_url:
+            continue_url = f"{auth_base}/sign-in-with-chatgpt/codex/consent"
             
-            # 注意：此处禁止自动重定向 (allow_redirects=False)，以便我们提取 Location
-            auth_resp, _ = request_with_local_retry(
-                self.session, 
-                "get", 
-                f"{auth_base}/api/accounts/authorize?{urlencode(params)}", 
-                headers=self._navigate_headers(f"{auth_base}/about-you"), 
-                allow_redirects=False,
-                verify=False
-            )
+        tokens = exchange_platform_tokens(self.session, self.device_id, code_verifier, continue_url, self.proxy)
+        if not tokens:
+            raise RuntimeError("token换取失败")
+        step(index, "token 换取完成")
+        return tokens
 
-            # 拦截 302 跳转提取 code
-            if auth_resp is not None and auth_resp.status_code in (302, 303):
-                location = auth_resp.headers.get("Location", "")
-                parsed_url = urlparse(location)
-                auth_code = parse_qs(parsed_url.query).get("code", [""])[0]
-
-            if not auth_code:
-                raise RuntimeError("未能从重定向流中提取到 Auth Code，可能触发了额外的设备验证")
-
-            step(index, "成功获取到 Auth Code，正在换取 JWT")
-
-            # 使用 code 和最初始的 code_verifier 换取双 Token
-            token_resp, error = request_with_local_retry(
-                self.session,
-                "post",
-                f"{auth_base}/oauth/token",
-                headers={"Content-Type": "application/json"},
-                json={
-                    "grant_type": "authorization_code",
-                    "client_id": platform_oauth_client_id,
-                    "code": auth_code,
-                    "code_verifier": code_verifier,
-                    "redirect_uri": platform_oauth_redirect_uri,
-                },
-                verify=False
-            )
+    def register(self, index: int) -> dict:
+        email = self.email
+        if not email:
+            raise RuntimeError("未传入邮箱参数")
             
-            data = _response_json(token_resp)
-            if token_resp is None or token_resp.status_code != 200 or not data.get("access_token"):
-                 raise RuntimeError(f"Token交换失败 (HTTP {getattr(token_resp, 'status_code', 'unknown')}): {data}")
-
-            return {
-                "email": email,
-                "password": password,
-                "access_token": str(data.get("access_token")),
-                "refresh_token": str(data.get("refresh_token")),
-            }
-        except Exception as e:
-            raise RuntimeError(f"Token交换流程发生异常: {e}")
+        step(index, f"使用 Node 传入的邮箱启动: {email}")
+        password = _random_password()
+        first_name, last_name = _random_name()
+        
+        self._platform_authorize(email, index)
+        self._register_user(email, password, index)
+        self._send_otp(index)
+        
+        step(index, "开始等待注册验证码")
+        code = self._get_ipc_otp()
+        step(index, f"从 Node.js 成功收到验证码: {code}")
+        
+        self._validate_otp(code, index)
+        self._create_account(f"{first_name} {last_name}", _random_birthdate(), index)
+        
+        # 你的原始代码精髓：走完整的登录换 Token 流程
+        tokens = self._login_and_exchange_tokens(email, password, index)
+        
+        return {
+            "email": email,
+            "password": password,
+            "access_token": str(tokens.get("access_token") or "").strip(),
+            "refresh_token": str(tokens.get("refresh_token") or "").strip(),
+            "id_token": str(tokens.get("id_token") or "").strip(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
