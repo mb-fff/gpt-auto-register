@@ -5,7 +5,6 @@ import { TaskController } from './task.controller';
 import { RegisterProcessor } from '../../queues/register.processor';
 import { PrismaModule } from '../../common/prisma/prisma.module';
 import { AccountModule } from '../account/account.module';
-import { OAuthModule } from '../oauth/oauth.module';
 
 @Module({
   imports: [
@@ -18,7 +17,6 @@ import { OAuthModule } from '../oauth/oauth.module';
     BullModule.registerQueue({ name: 'register-queue' }),
     PrismaModule,
     AccountModule,
-    OAuthModule,
   ],
   providers: [TaskService, RegisterProcessor],
   controllers: [TaskController],

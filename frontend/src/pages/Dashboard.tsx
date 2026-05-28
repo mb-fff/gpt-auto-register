@@ -89,9 +89,9 @@ const Dashboard: React.FC = () => {
                   <RiRobot2Line className="size-4 text-[#cdd2ff]" />
                   空间自动化控制台
                 </div>
-                <h2 className="text-3xl font-normal leading-tight text-white">从一个任务面板启动整条注册链路。</h2>
+                <h2 className="text-3xl font-normal leading-tight text-white">从一个任务面板管理注册待办链路。</h2>
                 <p className="mt-3 text-sm leading-6 text-white/56">
-                  保持后端队列与 OAuth 流程不变，前端提供更清晰的任务入口、状态反馈和操作节奏。
+                  保留后端队列、代理字段和接码邮箱诊断，前端提供更清晰的任务入口、状态反馈和操作节奏。
                 </p>
                 <div className="mt-7 flex flex-wrap gap-3">
                   <Button variant="primary" size="lg" onClick={() => { window.location.href = '/tasks'; }}>
@@ -115,9 +115,9 @@ const Dashboard: React.FC = () => {
           <CardContent className="flex flex-col gap-3">
             {[
               { label: '系统诊断', value: health ? `配置 ${getHealthLabel(health.config.status)} / 服务 ${getHealthLabel(health.services.status)}` : '等待诊断数据', text: health ? getHealthLabel(health.status) : '检查中', tone: health ? getHealthTone(health.status) : 'violet' },
-              { label: '账号资产库', value: `已索引 ${stats.total} 个账号`, text: '正常', tone: 'success' },
-              { label: '注册队列', value: `${queueStatus.waiting} 排队 / ${queueStatus.active} 执行 / ${queueStatus.failed} 失败`, text: queueStatus.active ? '运行中' : '待命', tone: queueStatus.failed ? 'danger' : queueStatus.active ? 'warning' : 'success' },
-              { label: 'Refresh Token 导出', value: '存在 RT 时可导出 auth.json', text: '待命', tone: 'neutral' },
+              { label: '并发数', value: `${queueStatus.active} 执行 / ${queueStatus.waiting} 排队`, text: queueStatus.active ? '运行中' : '待命', tone: queueStatus.failed ? 'danger' : queueStatus.active ? 'warning' : 'success' },
+              { label: '代理池配置', value: '任务提交时可绑定代理', text: '可选', tone: 'neutral' },
+              { label: '接码配置', value: '通过系统诊断检查邮箱可用性', text: '待命', tone: 'neutral' },
             ].map(item => (
               <div key={item.label} className="flex items-center justify-between gap-4 rounded-3xl border border-white/[0.07] bg-white/[0.035] px-4 py-3">
                 <div>

@@ -1,20 +1,30 @@
-FROM node:20-alpine
+# 使用 Node 的 Debian 版本作为基础镜像（比 Alpine 兼容 Python 编译更好）
+FROM node:18-bullseye
 
+# 设置工作目录
 WORKDIR /app
 
-ENV PRISMA_ENGINES_MIRROR=https://registry.npmmirror.com/-/binary/prisma
+# 安装 Python3, pip 以及构建 curl_cffi 可能需要的依赖
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-dev \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN apk add --no-cache openssl libc6-compat \
-  && npm install -g pnpm@8.15.5 --registry=https://registry.npmmirror.com
+# 先复制 package.json 安装 Node 依赖
+COPY package*.json pnpm-lock.yaml ./
+RUN npm install -g pnpm && pnpm install
 
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm config set registry https://registry.npmmirror.com \
-  && pnpm install --frozen-lockfile --ignore-scripts
+# 复制 Python 的 requirements.txt 并安装
+COPY scripts/requirements.txt ./scripts/
+RUN pip3 install --no-cache-dir -r scripts/requirements.txt
 
-COPY prisma ./prisma
-
+# 复制其余源代码
 COPY . .
 
-EXPOSE 3001
+# 构建 NestJS 项目
+RUN pnpm run build
 
-CMD ["sh", "-c", "pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm run dev"]
+# 启动命令
+CMD ["pnpm", "run", "start:prod"]

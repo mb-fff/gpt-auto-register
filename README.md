@@ -5,16 +5,16 @@
 作者不承担任何法律责任。**严禁用于商业或大规模注册**。
 
 ## 项目特点
-- 使用 Dolphin Anty (优先) / GoLogin 指纹浏览器 API
-- 全自动 OpenAI OAuth PKCE 流程
-- 获取 refresh_token 供 Codex / 第三方客户端使用
+- 本地账号任务管理与状态追踪
+- 支持代理字段、接码邮箱配置和队列状态观察
+- 不再依赖外部指纹浏览器或 token 导出流程
 - Docker Compose 一键部署
 
 ## 快速启动
 
-1. 宿主机安装并运行 **Dolphin Anty** (Local API 端口 3001)
-2. `cp .env.example .env`
+1. `cp .env.example .env`
+2. 按需配置代理池和接码邮箱参数
 3. `docker compose up -d --build`
-4. 打开 http://localhost:3000
+4. 打开 http://localhost:3100
 
 **详细文档见下方文件**

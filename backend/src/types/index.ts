@@ -4,9 +4,3 @@ export interface RegisterTaskData {
   proxy?: string;
   usePhoneVerify?: boolean;
 }
-
-export interface DolphinProfile {
-  id: string;
-  name: string;
-  status: string;
-}

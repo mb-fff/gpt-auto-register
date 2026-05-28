@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { DolphinService } from '../../common/dolphin/dolphin.service';
 import { Prisma } from '@prisma/client';
 
 @Injectable()
@@ -9,18 +8,16 @@ export class AccountService {
 
   constructor(
     private prisma: PrismaService,
-    private dolphin: DolphinService,
   ) {}
 
   async createAccount(email: string, proxy?: string) {
     this.logger.log(`正在创建账号: ${email}`);
-
-    const profile = await this.dolphin.createProfile(`auto-${Date.now()}`, proxy);
+    const localProfileId = `local-${Date.now()}`;
 
     return this.prisma.account.create({
       data: {
         email,
-        profileId: profile.id || profile.profileId,
+        profileId: localProfileId,
         proxy,
         status: 'pending',
       },

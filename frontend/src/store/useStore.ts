@@ -4,7 +4,6 @@ interface Account {
   id: string;
   email: string;
   status: string;
-  refreshToken?: string;
   profileId: string;
 }
 

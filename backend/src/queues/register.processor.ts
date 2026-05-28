@@ -1,47 +1,52 @@
-// backend/src/queues/register.processor.ts
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
-import { Job } from 'bullmq';
+import { Process, Processor } from '@nestjs/bull';
+import { Job } from 'bull';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import * as path from 'path';
 import { AccountService } from '../modules/account/account.service';
-import { OAuthService } from '../modules/oauth/oauth.service';
+
+const execAsync = promisify(exec);
 
 @Processor('register-queue')
-export class RegisterProcessor extends WorkerHost {
-  private readonly logger = new Logger(RegisterProcessor.name);
+export class RegisterProcessor {
+  constructor(private accountService: AccountService) { }
 
-  constructor(
-    private accountService: AccountService,
-    private oauthService: OAuthService,
-  ) {
-    super();
-  }
+  @Process('register-task')
+  async handleRegistration(job: Job) {
+    const { proxyUrl } = job.data;
 
-  async process(job: Job) {
-    this.logger.warn(`🚀 开始执行真实注册任务 #${job.data.count}（已关闭安全占位模式）`);
+    // 定位 Python 脚本路径
+    const scriptPath = path.join(__dirname, '../../scripts/register_worker.py');
 
     try {
-      // 创建账号记录
-      const account = await this.accountService.createAccount(
-        `temp-${Date.now()}-${job.data.count}@example.com`, // 后续会被临时邮箱覆盖
-        job.data.proxy
-      );
+      // 执行 Python 脚本，传入代理
+      // 注意：根据你的环境，命令可能是 python3
+      const { stdout, stderr } = await execAsync(`python3 ${scriptPath} --proxy "${proxyUrl}"`);
 
-      this.logger.log(`账号创建完成 ID: ${account.id}`);
+      // 解析 Python 吐出的 JSON
+      const result = JSON.parse(stdout.trim());
 
-      // === 关键：调用真实完整自动化流程 ===
-      const result = await this.oauthService.startFullAutoRegister(account.id);
+      if (result.status === 'success') {
+        const { email, password, access_token, refresh_token } = result.data;
 
-      this.logger.log(`✅ 任务 #${job.data.count} 执行成功！已获取真实 RT`);
+        // 保存到数据库
+        await this.accountService.create({
+          email,
+          password,
+          accessToken: access_token,
+          refreshToken: refresh_token,
+          status: 'ACTIVE'
+        });
 
-      return {
-        success: true,
-        accountId: account.id,
-        refreshToken: result.refreshToken,
-        email: result.email,
-      };
-    } catch (error: any) {
-      this.logger.error(`❌ 任务 #${job.data.count} 失败: ${error.message}`);
-      throw error; // 让 BullMQ 进行重试
+        return { success: true, email };
+      } else {
+        throw new Error(result.message || 'Python worker failed without specific error');
+      }
+
+    } catch (error) {
+      console.error(`[Register Task Failed] Proxy: ${proxyUrl}, Error:`, error.message);
+      // 触发重试逻辑或标记失败
+      throw error;
     }
   }
 }

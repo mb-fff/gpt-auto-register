@@ -7,7 +7,6 @@ import {
   RiRefreshLine,
   RiSettings4Line,
   RiShieldCheckLine,
-  RiWifiLine,
 } from '@remixicon/react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
@@ -69,7 +68,7 @@ const Diagnostics: React.FC = () => {
   return (
     <WindowFrame
       title="系统诊断"
-      subtitle="启动前检查数据库、Redis、指纹浏览器、IMAP 和关键环境变量，定位流程失败点。"
+      subtitle="启动前检查数据库、Redis、接码邮箱和关键环境变量，定位流程失败点。"
       status={health ? getHealthLabel(health.status) : loading ? '检查中' : '未连接'}
     >
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -87,14 +86,14 @@ const Diagnostics: React.FC = () => {
         <MetricOrb label="总体状态" value={health ? getHealthLabel(health.status) : '检查中'} icon={<RiShieldCheckLine />} tone={health?.status === 'error' ? 'amber' : health?.status === 'warn' ? 'purple' : 'green'} />
         <MetricOrb label="正常项" value={okCount} icon={<RiHeartLine />} tone="green" />
         <MetricOrb label="注意项" value={warnCount} icon={<RiSettings4Line />} tone="amber" />
-        <MetricOrb label="异常项" value={errorCount} icon={<RiWifiLine />} tone="purple" />
+        <MetricOrb label="异常项" value={errorCount} icon={<RiShieldCheckLine />} tone="purple" />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
         <Card>
           <CardHeader>
             <CardTitle>服务连通性</CardTitle>
-            <CardDescription>真实连接数据库、Redis、指纹浏览器 API 和 IMAP。</CardDescription>
+            <CardDescription>真实连接数据库、Redis 和 IMAP 接码邮箱。</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
             {loading && <div className="rounded-3xl border border-white/[0.07] bg-white/[0.035] p-6 text-sm text-white/42">正在检查服务...</div>}
@@ -120,7 +119,7 @@ const Diagnostics: React.FC = () => {
               {[
                 ['数据库', serviceChecks.find(item => item.key === 'database')?.status, <RiDatabase2Line className="size-5" />],
                 ['邮箱', serviceChecks.find(item => item.key === 'imap')?.status, <RiMailCheckLine className="size-5" />],
-                ['浏览器', serviceChecks.find(item => item.key === 'browserProvider')?.status, <RiWifiLine className="size-5" />],
+                ['队列', serviceChecks.find(item => item.key === 'redis')?.status, <RiSettings4Line className="size-5" />],
               ].map(([label, status, icon]) => (
                 <div key={label as string} className="rounded-3xl border border-white/[0.07] bg-white/[0.035] p-4">
                   <div className="mb-4 flex size-10 items-center justify-center rounded-2xl bg-white/[0.07] text-[#cdd2ff]">{icon}</div>
