@@ -9,7 +9,6 @@ import {
   RiShieldUserLine,
   RiRefreshLine,
   RiSearch2Line,
-  RiShieldCheckLine,
 } from '@remixicon/react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -18,7 +17,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
 import { StatusBadge } from '../components/os/StatusBadge';
-import { copyValue, TokenField } from '../components/os/TokenField';
+import { copyValue } from '../components/os/TokenField';
 import { WindowFrame } from '../components/os/WindowFrame';
 import { Account, getAccountStatusTone } from '../lib/accountTypes';
 import { cn } from '../lib/utils';
@@ -137,14 +136,10 @@ const Accounts: React.FC = () => {
   return (
     <WindowFrame
       title="账号资产库"
-      subtitle="以空间数据面板管理账号资产、代理配置和注册状态。"
+      subtitle=""
       status={`${total} 个账号`}
     >
-      <div className="mb-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex items-center gap-3 text-sm text-white/50">
-          <RiShieldCheckLine className="size-5 text-emerald-200" />
-          账号资产仅在本地查看，用于跟踪注册进度和代理绑定。
-        </div>
+      <div className="mb-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-end">
         <div className="flex flex-col gap-2 sm:flex-row">
           <div className="relative">
             <RiSearch2Line className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-white/35" />
@@ -270,10 +265,6 @@ const Accounts: React.FC = () => {
                           删除
                         </Button>
                       </div>
-                    </div>
-                    <div className="mt-4 grid min-w-0 gap-3 xl:grid-cols-2">
-                      <TokenField label="Access Token" value={account.accessToken} compact />
-                      <TokenField label="Refresh Token" value={account.refreshToken} compact />
                     </div>
 	                </div>
               );

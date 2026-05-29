@@ -72,11 +72,7 @@ function Shell() {
         <main className="flex min-w-0 flex-1 flex-col gap-4 lg:gap-6">
           <header className="glass-panel flex flex-col gap-4 rounded-[30px] px-4 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-5">
             <div>
-              <div className="flex items-center gap-2 text-xs font-medium tracking-normal text-white/40">
-                <span className="size-1.5 rounded-full bg-emerald-300 shadow-[0_0_16px_rgba(110,231,183,0.8)]" />
-                空间计算工作台
-              </div>
-              <div className="mt-1 text-xl font-normal text-white">{active.label}</div>
+              <div className="text-xl font-normal text-white">{active.label}</div>
             </div>
 
             <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
@@ -123,9 +119,6 @@ function Shell() {
             <Route path="/diagnostics" element={<Diagnostics />} />
           </Routes>
 
-          <footer className="pb-2 text-center text-xs text-white/34">
-            本项目仅供本地个人学习和技术研究使用 · 自动化注册 OpenAI 账号存在被封禁风险
-          </footer>
         </main>
       </div>
       <Toaster />
