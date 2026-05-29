@@ -7,7 +7,9 @@ import * as path from 'path';
 import { AccountService } from '../modules/account/account.service';
 import { EmailService } from '../common/email/email.service';
 
-@Processor('register-queue')
+@Processor('register-queue', {
+  concurrency: 5, // 并发数
+})
 export class RegisterProcessor extends WorkerHost {
   private readonly logger = new Logger(RegisterProcessor.name);
 
