@@ -1,3 +1,4 @@
+# backend/scripts/register.py
 import base64
 import hashlib
 import json
@@ -9,7 +10,7 @@ import uuid
 import sys
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlencode, urlparse
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import requests
 import urllib3
@@ -22,10 +23,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # --- 全局常量配置 ---
 auth_base = "https://auth.openai.com"
 platform_base = "https://platform.openai.com"
-
-# ！！！核心替换：如果您要专门绑定并授权 Codex，需要查阅您所用 Codex 工具专属的 Client ID
-# 如果没有专属的，通常使用 Platform 客户端换取具有全权限作用域的 rt
-platform_oauth_client_id = "app_2SKx67EdpoN0G6j64rFvigXD" 
+platform_oauth_client_id = "app_2SKx67EdpoN0G6j64rFvigXD"
 platform_oauth_redirect_uri = f"{platform_base}/auth/callback"
 platform_oauth_audience = "https://api.openai.com/v1"
 platform_auth0_client = "eyJuYW1lIjoiYXV0aDAtc3BhLWpzIiwidmVyc2lvbiI6IjEuMjEuMCJ9"
@@ -35,24 +33,41 @@ sec_ch_ua = '"Google Chrome";v="145", "Not?A_Brand";v="8", "Chromium";v="145"'
 sec_ch_ua_full_version_list = '"Chromium";v="145.0.0.0", "Not:A-Brand";v="99.0.0.0", "Google Chrome";v="145.0.0.0"'
 default_timeout = 30
 
-# --- GrizzlySMS 封装 ---
+# --- GrizzlySMS 封装增强版 ---
 class GrizzlySMSProvider:
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.base_url = "https://api.grizzlysms.com/stubs/handler_api.php"
 
-    def get_number(self, service="dr", country="6") -> Optional[Tuple[str, str]]:
-        params = {"api_key": self.api_key, "action": "getNumber", "service": service, "country": country}
+    def get_balance(self) -> float:
+        """查询账户余额"""
+        params = {"api_key": self.api_key, "action": "getBalance"}
         try:
-            res = requests.get(self.base_url, params=params, timeout=15)
-            if res.text.startswith("ACCESS_NUMBER"):
-                _, order_id, number = res.text.split(":")
-                return order_id, number
-            return None
+            res = requests.get(self.base_url, params=params, timeout=10)
+            if res.text.startswith("ACCESS_BALANCE"):
+                return float(res.text.split(":")[1])
+            return 0.0
         except Exception:
-            return None
+            return 0.0
 
-    def wait_for_sms(self, order_id: str, timeout=120) -> Optional[str]:
+    def get_number(self, service="dr", country="6") -> tuple[str, str]:
+        """购买号码，带有详细报错透传"""
+        params = {"api_key": self.api_key, "action": "getNumber", "service": service, "country": country}
+        res = requests.get(self.base_url, params=params, timeout=15)
+        if res.text.startswith("ACCESS_NUMBER"):
+            _, order_id, number = res.text.split(":")
+            return order_id, number
+        
+        # 解析常见错误
+        error_msg = res.text
+        if "NO_NUMBERS" in res.text: error_msg = "该国家暂时无号 (NO_NUMBERS)"
+        elif "NO_BALANCE" in res.text: error_msg = "余额不足 (NO_BALANCE)"
+        elif "BAD_KEY" in res.text: error_msg = "API_KEY 错误 (BAD_KEY)"
+        
+        raise RuntimeError(f"GrizzlySMS 购买号码失败: {error_msg}")
+
+    def wait_for_sms(self, order_id: str, timeout=180) -> str | None:
+        """等待短信，最多等待 3 分钟"""
         start_time = time.time()
         params = {"api_key": self.api_key, "action": "getStatus", "id": order_id}
         while time.time() - start_time < timeout:
@@ -114,7 +129,7 @@ navigate_headers = {
 def step(index: int, text: str, color: str = ""):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] [Worker-{index}] {text}", file=sys.stderr, flush=True)
 
-def _make_trace_headers() -> Dict[str, str]:
+def _make_trace_headers() -> dict[str, str]:
     trace_id = str(random.getrandbits(64))
     parent_id = str(random.getrandbits(64))
     return {
@@ -126,7 +141,7 @@ def _make_trace_headers() -> Dict[str, str]:
         "x-datadog-trace-id": trace_id,
     }
 
-def _generate_pkce() -> Tuple[str, str]:
+def _generate_pkce() -> tuple[str, str]:
     code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(64)).rstrip(b"=").decode("ascii")
     code_challenge = base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode("ascii")).digest()).rstrip(b"=").decode("ascii")
     return code_verifier, code_challenge
@@ -137,7 +152,7 @@ def _random_password(length: int = 16) -> str:
     random.shuffle(value)
     return "".join(value)
 
-def _random_name() -> Tuple[str, str]:
+def _random_name() -> tuple[str, str]:
     return random.choice(["James", "Robert", "John", "Michael", "David", "Mary", "Emma", "Olivia"]), random.choice(["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller"])
 
 def _random_birthdate() -> str:
@@ -233,7 +248,7 @@ def validate_otp(session: requests.Session, device_id: str, code: str):
     resp, error = request_with_local_retry(session, "post", f"{auth_base}/api/accounts/email-otp/validate", json={"code": code}, headers=headers, verify=False)
     return resp, error
 
-def extract_oauth_callback_params_from_url(url: str) -> Optional[Dict[str, str]]:
+def extract_oauth_callback_params_from_url(url: str) -> dict[str, str] | None:
     if not url: return None
     try: params = parse_qs(urlparse(url).query)
     except Exception: return None
@@ -241,7 +256,7 @@ def extract_oauth_callback_params_from_url(url: str) -> Optional[Dict[str, str]]
     if not code: return None
     return {"code": code, "state": str((params.get("state") or [""])[0]).strip()}
 
-def extract_oauth_callback_params_from_consent_session(session: requests.Session, consent_url: str, device_id: str) -> Optional[Dict[str, str]]:
+def extract_oauth_callback_params_from_consent_session(session: requests.Session, consent_url: str, device_id: str) -> dict[str, str] | None:
     if consent_url.startswith("/"): consent_url = f"{auth_base}{consent_url}"
     current_url = consent_url
     for _ in range(10):
@@ -277,7 +292,7 @@ def extract_oauth_callback_params_from_consent_session(session: requests.Session
     org_resp = session.post(f"{auth_base}/api/accounts/organization/select", json={"org_id": org_id}, headers=org_headers, verify=False, timeout=30, allow_redirects=False)
     return extract_oauth_callback_params_from_url(str(org_resp.headers.get("Location") or "").strip())
 
-def exchange_platform_tokens(session: requests.Session, device_id: str, code_verifier: str, consent_url: str, proxy: str) -> Optional[dict]:
+def exchange_platform_tokens(session: requests.Session, device_id: str, code_verifier: str, consent_url: str, proxy: str) -> dict | None:
     callback_params = extract_oauth_callback_params_from_consent_session(session, consent_url, device_id)
     if not callback_params: return None
     code = str(callback_params.get("code") or "").strip()
@@ -289,9 +304,10 @@ def exchange_platform_tokens(session: requests.Session, device_id: str, code_ver
 
 
 class PlatformRegistrar:
-    def __init__(self, proxy: str = "", email: str = "", grizzly_key: str = "") -> None:
+    def __init__(self, proxy: str = "", email: str = "", grizzly_key: str = "", country: str = "6") -> None:
         self.proxy = proxy
         self.email = email
+        self.country = country
         self.session = create_session(proxy)
         self.device_id = str(uuid.uuid4())
         self.sms_provider = GrizzlySMSProvider(grizzly_key) if grizzly_key else None
@@ -327,50 +343,48 @@ class PlatformRegistrar:
         code = self._get_ipc_otp()
         validate_otp(self.session, self.device_id, code)
 
-        # 5. Create Profile
+        # 5. Create Profile (💡 这里就是修复了 too many values to unpack 的地方)
         headers = dict(common_headers); headers["oai-device-id"] = self.device_id
         headers["openai-sentinel-token"] = build_sentinel_token(self.session, self.device_id, "oauth_create_account")
-        resp, _ = self.session.post(f"{auth_base}/api/accounts/create_account", json={"name": f"{first_name} {last_name}", "birthdate": _random_birthdate()}, headers=headers)
+        resp, _ = request_with_local_retry(self.session, "post", f"{auth_base}/api/accounts/create_account", json={"name": f"{first_name} {last_name}", "birthdate": _random_birthdate()}, headers=headers)
 
-        # 🌟 新增核心步骤：GrizzlySMS 手机接码验证
+        # 6. GrizzlySMS 手机接码验证
         if self.sms_provider:
-            step(index, "开始请求 GrizzlySMS 购买手机号...")
-            # 购买印尼号码(国别码6)，服务代号"dr"
-            sms_order = self.sms_provider.get_number(service="dr", country="6")
-            if not sms_order:
-                raise RuntimeError("GrizzlySMS 购买号码失败，请检查余额或更换国家")
-            order_id, phone_number = sms_order
-            step(index, f"获取号码成功: {phone_number}, 订单ID: {order_id}")
+            balance = self.sms_provider.get_balance()
+            step(index, f"💰 GrizzlySMS 当前余额: {balance} 卢布")
+            if balance < 10:
+                step(index, "⚠️ 警告：余额极低，可能无法购买号码！", "yellow")
 
-            # 向 OpenAI 提交手机号准备发送短信
+            step(index, f"开始请求 GrizzlySMS 购买手机号 (请求国家代码: {self.country})...")
+            order_id, phone_number = self.sms_provider.get_number(service="dr", country=self.country)
+            step(index, f"✅ 获取号码成功: {phone_number}, 订单ID: {order_id}")
+
             sms_headers = dict(common_headers); sms_headers["oai-device-id"] = self.device_id
             sms_headers["openai-sentinel-token"] = build_sentinel_token(self.session, self.device_id, "phone_verification_send")
-            
-            # 提交号码给 OpenAI (号码格式需要带上加号或国别前缀)
             phone_payload = {"phone_number": f"+{phone_number}"}
             sms_resp, _ = request_with_local_retry(self.session, "post", f"{auth_base}/api/accounts/phone-verification/send", json=phone_payload, headers=sms_headers)
             
             if sms_resp is None or sms_resp.status_code != 200:
-                self.sms_provider.set_status(order_id, 8) # 取消订单
-                raise RuntimeError(f"OpenAI 拒绝发送短信: {_response_json(sms_resp)}")
+                self.sms_provider.set_status(order_id, 8) # OpenAI 拒绝，立马取消订单退款！
+                raise RuntimeError(f"OpenAI 拒绝向该号码发送短信，已取消订单退款: {_response_json(sms_resp)}")
 
-            step(index, "OpenAI 短信发送成功，开始轮询 GrizzlySMS 获取验证码...")
+            step(index, "⏳ OpenAI 短信发送成功，开始轮询 GrizzlySMS 获取验证码 (最多等3分钟)...")
             sms_code = self.sms_provider.wait_for_sms(order_id)
             if not sms_code:
-                self.sms_provider.set_status(order_id, 8)
-                raise RuntimeError("GrizzlySMS 接收短信验证码超时")
+                self.sms_provider.set_status(order_id, 8) # 超时，取消订单退款！
+                raise RuntimeError("GrizzlySMS 接收短信验证码超时，已取消订单退款")
 
-            step(index, f"成功获取短信验证码: {sms_code}，正在向 OpenAI 提交验证")
+            step(index, f"✅ 成功获取短信验证码: {sms_code}，正在向 OpenAI 提交验证")
             sms_headers["openai-sentinel-token"] = build_sentinel_token(self.session, self.device_id, "phone_verification_validate")
             verify_resp, _ = request_with_local_retry(self.session, "post", f"{auth_base}/api/accounts/phone-verification/validate", json={"code": sms_code}, headers=sms_headers)
             
             if verify_resp is None or verify_resp.status_code != 200:
                 raise RuntimeError(f"手机验证码错误或被 OpenAI 拒绝: {_response_json(verify_resp)}")
             
-            self.sms_provider.set_status(order_id, 3) # 标记订单完成
-            step(index, "手机号风控验证完美通过！")
+            self.sms_provider.set_status(order_id, 3) # 标记订单彻底完成
+            step(index, "🎉 手机号风控验证完美通过！")
 
-        # 6. Exchange Token 到 Codex 授权页
+        # 7. Exchange Token 到 Codex 授权页
         step(index, "开始登录换取给 Codex 使用的专用 rt")
         continue_url = f"{auth_base}/sign-in-with-chatgpt/codex/consent"
         tokens = exchange_platform_tokens(self.session, self.device_id, code_verifier, continue_url, self.proxy)
