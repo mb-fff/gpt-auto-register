@@ -33,10 +33,10 @@ import {
 } from '../lib/taskTypes';
 
 const Tasks: React.FC = () => {
-  const [count, setCount] = useState('5');
-  const [retryAttempts, setRetryAttempts] = useState('3');
+  const [count, setCount] = useState('1');
+  const [retryAttempts, setRetryAttempts] = useState('1');
   const [proxy, setProxy] = useState('');
-  const [smsCountry, setSmsCountry] = useState('6'); 
+  const [smsCountry, setSmsCountry] = useState('187'); 
   
   const [submitting, setSubmitting] = useState(false);
   const [lastJobs, setLastJobs] = useState<string[]>([]);
@@ -101,8 +101,8 @@ const Tasks: React.FC = () => {
       setLastJobs(res.data?.jobIds || []);
       toast.success(`成功创建 ${parsedCount} 个注册任务！(接码国家: ${smsCountry})`);
       await fetchQueueSnapshot();
-      setCount('5');
-      setRetryAttempts('3');
+      setCount('1');
+      setRetryAttempts('1');
       setProxy('');
     } catch (error) {
       toast.error('创建任务失败');
