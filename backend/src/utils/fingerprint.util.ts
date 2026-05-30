@@ -1,4 +1,4 @@
-// 📁 backend/src/utils/fingerprint.util.ts (新建文件)
+// 📁 backend/src/utils/fingerprint.util.ts
 
 export interface DeviceFingerprint {
     os: string;
@@ -8,13 +8,14 @@ export interface DeviceFingerprint {
     timezone: string;
     hardwareConcurrency: number;
     deviceMemory: number;
-    impersonate: string; // 用于 curl_cffi 的底层 TLS 伪装标识
+    impersonate: string;
 }
 
 export function generateDeviceFingerprint(): DeviceFingerprint {
     const osConfigs = [
-        { os: 'Windows NT 10.0; Win64; x64', platform: 'Windows', impersonate: 'chrome120' },
-        { os: 'Macintosh; Intel Mac OS X 10_15_7', platform: 'macOS', impersonate: 'chrome116' },
+        // 👇 已经全部降级为稳定版 chrome110 或 safari15_3
+        { os: 'Windows NT 10.0; Win64; x64', platform: 'Windows', impersonate: 'chrome110' },
+        { os: 'Macintosh; Intel Mac OS X 10_15_7', platform: 'macOS', impersonate: 'chrome110' },
         { os: 'Macintosh; Intel Mac OS X 10_14_6', platform: 'macOS', impersonate: 'safari15_3' }
     ];
 

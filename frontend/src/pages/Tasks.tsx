@@ -30,11 +30,11 @@ import {
 } from '../lib/taskTypes';
 
 const Tasks: React.FC = () => {
-  const [count, setCount] = useState('5');
-  const [retryAttempts, setRetryAttempts] = useState('3');
+  const [count, setCount] = useState('1');
+  const [retryAttempts, setRetryAttempts] = useState('1');
   const [proxy, setProxy] = useState('');
-  // 👇 2. 新增一个状态，用于存储当前选中的接码国家，默认 '6' (印尼)
-  const [smsCountry, setSmsCountry] = useState('6'); 
+  // 👇 2. 新增一个状态，用于存储当前选中的接码国家，默认 '187' (美国)
+  const [smsCountry, setSmsCountry] = useState('187'); 
   
   const [submitting, setSubmitting] = useState(false);
   const [lastJobs, setLastJobs] = useState<string[]>([]);

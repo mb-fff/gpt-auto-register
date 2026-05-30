@@ -22,14 +22,16 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # --- 全局常量配置 ---
 auth_base = "https://auth.openai.com"
 platform_base = "https://platform.openai.com"
-platform_oauth_client_id = "app_2SKx67EdpoN0G6j64rFvigXD"
-platform_oauth_redirect_uri = f"{platform_base}/auth/callback"
+# 💡 核心修改 1：使用你抓包得到的最新 Codex OAuth Client ID
+platform_oauth_client_id = "app_EMoamEEZ73f0CkXaXp7hrann"
+# 回调地址也需要保持一致（后端虽然配的是 auth/callback，这里最好与抓包一致或者用默认的）
+platform_oauth_redirect_uri = "http://localhost:1455/auth/callback" 
 platform_oauth_audience = "https://api.openai.com/v1"
 platform_auth0_client = "eyJuYW1lIjoiYXV0aDAtc3BhLWpzIiwidmVyc2lvbiI6IjEuMjEuMCJ9"
 
 # 默认全局变量（将在实例化时被指纹覆盖）
 user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-screen_size = "1920x1080" # 新增屏幕尺寸全局变量
+screen_size = "1920x1080"
 sec_ch_ua = '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"'
 sec_ch_ua_full_version_list = '"Not_A Brand";v="8.0.0.0", "Chromium";v="120.0.6099.109", "Google Chrome";v="120.0.6099.109"'
 default_timeout = 30
@@ -162,7 +164,6 @@ class SentinelTokenGenerator:
     MAX_ATTEMPTS = 500000
     ERROR_PREFIX = "wQ8Lk5FbGpA2NcR9dShT6gYjU7VxZ4D"
     
-    # 💡 修改：接收动态的屏幕尺寸
     def __init__(self, device_id: str, ua: str, screen: str = "1920x1080"):
         self.device_id = device_id
         self.user_agent = ua
@@ -178,7 +179,6 @@ class SentinelTokenGenerator:
 
     def _get_config(self) -> list:
         perf_now = random.uniform(1000, 50000)
-        # 💡 修改：注入真实的屏幕分辨率 (如 1366x768) 增加欺骗度
         return [self.screen, time.strftime("%a %b %d %Y %H:%M:%S GMT+0000 (Coordinated Universal Time)", time.gmtime()), 4294705152, random.random(), self.user_agent, "https://sentinel.openai.com/sentinel/20260124ceb8/sdk.js", None, None, "en-US", random.random(), random.choice(["vendorSub-undefined", "plugins-undefined"]), random.choice(["location", "implementation"]), random.choice(["Object", "Function"]), perf_now, self.sid, "", random.choice([4, 8, 12]), time.time() * 1000 - perf_now]
 
     def _b64(self, data) -> str:
@@ -202,7 +202,6 @@ class SentinelTokenGenerator:
                 return "gAAAAAB" + payload + "~S"
         return "gAAAAAB" + self.ERROR_PREFIX + self._b64(str(None))
 
-# 🚀 核心修改：支持动态指纹 TLS impersonate 传参
 def create_session(proxy: str = "", impersonate_target: str = "chrome110") -> Any:
     session = curl_requests.Session(impersonate=impersonate_target)
     if proxy: 
@@ -223,7 +222,6 @@ def request_with_local_retry(session: Any, method: str, url: str, retry_attempts
     return None, last_error
 
 def build_sentinel_token(session: Any, device_id: str, flow: str) -> str:
-    # 使用注入后的全局 user_agent 和 screen_size
     generator = SentinelTokenGenerator(device_id, user_agent, screen_size)
     
     resp, err = request_with_local_retry(
@@ -263,56 +261,7 @@ def extract_oauth_callback_params_from_url(url: str) -> Optional[Dict[str, str]]
     if not code: return None
     return {"code": code, "state": str((params.get("state") or [""])[0]).strip()}
 
-def extract_oauth_callback_params_from_consent_session(session: Any, consent_url: str, device_id: str) -> Optional[Dict[str, str]]:
-    if consent_url.startswith("/"): consent_url = f"{auth_base}{consent_url}"
-    current_url = consent_url
-    for _ in range(10):
-        response = session.get(current_url, headers=navigate_headers, verify=False, timeout=30, allow_redirects=False)
-        callback_params = extract_oauth_callback_params_from_url(str(response.url)) or extract_oauth_callback_params_from_url(str(response.headers.get("Location") or "").strip())
-        if callback_params: return callback_params
-        location = str(response.headers.get("Location") or "").strip()
-        if response.status_code not in (301, 302, 303, 307, 308) or not location: break
-        current_url = f"{auth_base}{location}" if location.startswith("/") else location
-    raw = session.cookies.get("oai-client-auth-session")
-    if not raw: return None
-    try:
-        first_part = raw.split(".")[0]
-        padding = 4 - len(first_part) % 4
-        if padding != 4: first_part += "=" * padding
-        payload = json.loads(base64.urlsafe_b64decode(first_part))
-        workspace_id = payload["workspaces"][0]["id"]
-    except Exception: return None
-    headers = dict(common_headers)
-    headers["referer"] = consent_url
-    headers["oai-device-id"] = device_id
-    headers.update(_make_trace_headers())
-    ws_resp = session.post(f"{auth_base}/api/accounts/workspace/select", json={"workspace_id": workspace_id}, headers=headers, verify=False, timeout=30, allow_redirects=False)
-    callback_params = extract_oauth_callback_params_from_url(str(ws_resp.headers.get("Location") or "").strip())
-    if callback_params: return callback_params
-    ws_data = _response_json(ws_resp)
-    orgs = ((ws_data.get("data") or {}).get("orgs") or [])
-    if not orgs: return None
-    org_id = str((orgs[0] or {}).get("id") or "").strip()
-    org_headers = dict(common_headers)
-    org_headers["oai-device-id"] = device_id
-    org_headers.update(_make_trace_headers())
-    org_resp = session.post(f"{auth_base}/api/accounts/organization/select", json={"org_id": org_id}, headers=org_headers, verify=False, timeout=30, allow_redirects=False)
-    return extract_oauth_callback_params_from_url(str(org_resp.headers.get("Location") or "").strip())
-
-# 💡 传入底层的 TLS impersonate_target
-def exchange_platform_tokens(session: Any, device_id: str, code_verifier: str, consent_url: str, proxy: str, impersonate_target: str) -> Optional[dict]:
-    callback_params = extract_oauth_callback_params_from_consent_session(session, consent_url, device_id)
-    if not callback_params: return None
-    code = str(callback_params.get("code") or "").strip()
-    if not code: return None
-    resp = create_session(proxy, impersonate_target).post(f"{auth_base}/oauth/token", headers={"Content-Type": "application/x-www-form-urlencoded"}, data={"grant_type": "authorization_code", "code": code, "redirect_uri": platform_oauth_redirect_uri, "client_id": platform_oauth_client_id, "code_verifier": code_verifier}, verify=False, timeout=60)
-    data = _response_json(resp)
-    if resp.status_code != 200 or not data.get("access_token") or not data.get("refresh_token"): return None
-    return {"access_token": str(data.get("access_token")), "refresh_token": str(data.get("refresh_token"))}
-
-
 class PlatformRegistrar:
-    # 💡 核心修改：接收从 Node 端透传下来的设备指纹配置 fingerprint
     def __init__(self, proxy: str = "", email: str = "", grizzly_key: str = "", country: str = "6", fingerprint: dict = None) -> None:
         global user_agent, screen_size, common_headers, navigate_headers
 
@@ -322,31 +271,26 @@ class PlatformRegistrar:
         self.device_id = str(uuid.uuid4())
         self.sms_provider = GrizzlySMSProvider(grizzly_key) if grizzly_key else None
         
-        # 🛡️ 1. 解析 Node 端下发的虚拟设备指纹
         self.fingerprint = fingerprint or {}
-        self.impersonate_target = self.fingerprint.get("impersonate", "chrome110") # TLS 伪装
+        self.impersonate_target = self.fingerprint.get("impersonate", "chrome110")
         
         if self.fingerprint:
             new_ua = self.fingerprint.get("userAgent", user_agent)
             new_platform = self.fingerprint.get("platform", "Windows")
             new_screen = self.fingerprint.get("screenSize", screen_size)
             
-            # 🛡️ 2. 覆盖全局变量（每个 Worker 都是独立进程，覆盖全局安全且生效）
             user_agent = new_ua
             screen_size = new_screen
             
-            # 🛡️ 3. 动态更新所有后续请求的 Headers
             common_headers["user-agent"] = new_ua
             navigate_headers["user-agent"] = new_ua
             common_headers["sec-ch-ua-platform"] = f'"{new_platform}"'
             navigate_headers["sec-ch-ua-platform"] = f'"{new_platform}"'
             
-            # 如果是 macOS，清理掉 Windows 特有的 platform-version
             if new_platform == "macOS":
                 common_headers["sec-ch-ua-platform-version"] = '""'
                 navigate_headers["sec-ch-ua-platform-version"] = '""'
                 
-        # 🛡️ 4. 初始化应用了最新 TLS 指纹的 curl_cffi Session
         self.session = create_session(self.proxy, self.impersonate_target)
 
     def close(self) -> None:
@@ -364,13 +308,33 @@ class PlatformRegistrar:
         password = _random_password()
         first_name, last_name = _random_name()
 
-        # 1. Authorize
+        # 💡 1. Authorize (使用最新抓包的 Codex 专用参数)
+        step(index, "初始化 OAuth 会话...")
         self.session.cookies.set("oai-did", self.device_id, domain=".auth.openai.com")
         code_verifier, code_challenge = _generate_pkce()
-        params = {"issuer": auth_base, "client_id": platform_oauth_client_id, "audience": platform_oauth_audience, "redirect_uri": platform_oauth_redirect_uri, "device_id": self.device_id, "screen_hint": "login_or_signup", "max_age": "0", "login_hint": email, "scope": "openid profile email offline_access", "response_type": "code", "response_mode": "query", "state": secrets.token_urlsafe(32), "nonce": secrets.token_urlsafe(32), "code_challenge": code_challenge, "code_challenge_method": "S256", "auth0Client": platform_auth0_client}
-        resp, _ = request_with_local_retry(self.session, "get", f"{auth_base}/api/accounts/authorize?{urlencode(params)}", headers=navigate_headers, allow_redirects=True)
+        params = {
+            "client_id": platform_oauth_client_id,
+            "audience": platform_oauth_audience,
+            "redirect_uri": platform_oauth_redirect_uri,
+            "device_id": self.device_id,
+            "screen_hint": "login_or_signup",
+            "max_age": "0",
+            "login_hint": email,
+            "scope": "openid profile email offline_access",
+            "response_type": "code",
+            "response_mode": "query",
+            "state": secrets.token_urlsafe(32),
+            "nonce": secrets.token_urlsafe(32),
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+            "auth0Client": platform_auth0_client,
+            "codex_cli_simplified_flow": "true", # 👈 新增
+            "id_token_add_organizations": "true" # 👈 新增
+        }
+        resp, _ = request_with_local_retry(self.session, "get", f"{auth_base}/oauth/authorize?{urlencode(params)}", headers=navigate_headers, allow_redirects=True)
 
         # 2. Register User & 3. Send OTP
+        step(index, "提交注册信息...")
         headers = dict(common_headers); headers["oai-device-id"] = self.device_id
         headers["openai-sentinel-token"] = build_sentinel_token(self.session, self.device_id, "username_password_create")
         request_with_local_retry(self.session, "post", f"{auth_base}/api/accounts/user/register", json={"username": email, "password": password}, headers=headers)
@@ -380,88 +344,100 @@ class PlatformRegistrar:
         code = self._get_ipc_otp()
         validate_otp(self.session, self.device_id, code)
 
-        # 5. Create Profile
+        # 5. Create Profile (注册白号完成)
+        step(index, "完善身份信息 (白号注册完成)...")
         headers = dict(common_headers); headers["oai-device-id"] = self.device_id
         headers["openai-sentinel-token"] = build_sentinel_token(self.session, self.device_id, "oauth_create_account")
         resp, _ = request_with_local_retry(self.session, "post", f"{auth_base}/api/accounts/create_account", json={"name": f"{first_name} {last_name}", "birthdate": _random_birthdate()}, headers=headers)
 
-        # 6. GrizzlySMS 手机接码验证 (拒绝卡死版)
+        # 💡 6. 最新的 Codex 手机接码验证 (add-phone 流程)
         if self.sms_provider:
             balance = self.sms_provider.get_balance()
             step(index, f"💰 GrizzlySMS 当前余额: {balance} 卢布")
-            if balance < 10:
-                step(index, "⚠️ 警告：余额极低，可能无法购买号码！", "yellow")
-
+            
             step(index, f"开始请求 GrizzlySMS 购买手机号 (请求国家代码: {self.country})...")
             order_id, phone_number = self.sms_provider.get_number(service="dr", country=self.country)
             step(index, f"✅ 获取号码成功: {phone_number}, 订单ID: {order_id}")
 
             sms_headers = dict(common_headers); sms_headers["oai-device-id"] = self.device_id
+            
+            # (A) 发送手机验证码 (调用最新的 add-phone/send 接口)
+            step(index, "正在调用最新的 add-phone 接口...")
             sms_headers["openai-sentinel-token"] = build_sentinel_token(self.session, self.device_id, "phone_verification_send")
+            phone_payload = {"phone_number": f"+{phone_number}", "channel": "sms"}
             
-            endpoints = [
-                {"send": "/api/accounts/phone_verify/send", "verify": "/api/accounts/phone_verify/validate", "field": "phone_number"},
-                {"send": "/api/accounts/phone_verification/send", "verify": "/api/accounts/phone_verification/validate", "field": "phone_number"},
-                {"send": "/api/accounts/phone_verify/generate", "verify": "/api/accounts/phone_verify/validate", "field": "number"},
-            ]
+            resp, err = request_with_local_retry(self.session, "post", f"{auth_base}/api/accounts/add-phone/send", json=phone_payload, headers=sms_headers, retry_attempts=1, timeout=10)
             
-            sms_resp = None
-            active_endpoint = None
-            last_network_error = "" 
-            
-            for ep in endpoints:
-                step(index, f"正在嗅探 OpenAI 短信路由: {ep['send']}")
-                phone_payload = {ep["field"]: f"+{phone_number}"}
-                
-                resp, err = request_with_local_retry(self.session, "post", f"{auth_base}{ep['send']}", json=phone_payload, headers=sms_headers, retry_attempts=1, timeout=10)
-                
-                if resp is None:
-                    last_network_error = err
-                    step(index, f"❌ 网络请求超时或代理拒绝连接: {err}")
-                    continue
-
-                if resp.status_code != 404 and "Invalid URL" not in resp.text:
-                    sms_resp = resp
-                    active_endpoint = ep
-                    step(index, f"✅ 成功找到有效路由: {ep['send']}")
-                    break
-                else:
-                    step(index, f"⚠️ 路由已废弃 (HTTP {resp.status_code})")
-            
-            if sms_resp is None or sms_resp.status_code != 200:
+            if resp is None or resp.status_code != 200:
                 self.sms_provider.set_status(order_id, 8) # 退款
-                
-                if sms_resp is None:
-                    raise RuntimeError(f"OpenAI 拒绝发送短信：底层网络连接彻底失败或代理超时。真实报错: {last_network_error}")
-                else:
-                    raise RuntimeError(f"OpenAI 拒绝发送短信 (HTTP {sms_resp.status_code})，已被拦截！原始网页内容: {sms_resp.text[:500]}")
+                raise RuntimeError(f"OpenAI 拒绝发送短信: HTTP {getattr(resp, 'status_code', 'Network Error')}")
 
-            step(index, "⏳ OpenAI 短信发送成功，开始轮询 GrizzlySMS 获取验证码 (最多等3分钟)...")
+            # (B) 等待验证码
+            step(index, "⏳ 等待 GrizzlySMS 获取验证码...")
             sms_code = self.sms_provider.wait_for_sms(order_id)
             if not sms_code:
-                self.sms_provider.set_status(order_id, 8) # 超时退款
-                raise RuntimeError("GrizzlySMS 接收短信验证码超时，已取消订单退款")
+                self.sms_provider.set_status(order_id, 8) 
+                raise RuntimeError("GrizzlySMS 接收短信验证码超时，已退款")
 
-            step(index, f"✅ 成功获取短信验证码: {sms_code}，正在向 OpenAI 提交验证")
+            # (C) 验证手机验证码 (调用最新的 phone-otp/validate 接口)
+            step(index, f"✅ 获取到验证码: {sms_code}，提交验证...")
             sms_headers["openai-sentinel-token"] = build_sentinel_token(self.session, self.device_id, "phone_verification_validate")
-            verify_resp, _ = request_with_local_retry(self.session, "post", f"{auth_base}{active_endpoint['verify']}", json={"code": sms_code}, headers=sms_headers)
+            verify_resp, _ = request_with_local_retry(self.session, "post", f"{auth_base}/api/accounts/phone-otp/validate", json={"code": sms_code}, headers=sms_headers)
             
             if verify_resp is None or verify_resp.status_code != 200:
-                raise RuntimeError(f"手机验证码错误或被 OpenAI 拒绝: {_response_json(verify_resp)}")
+                raise RuntimeError("手机验证码错误或被拒绝")
             
             self.sms_provider.set_status(order_id, 3) # 标记完成
-            step(index, "🎉 手机号风控验证完美通过！")
+            step(index, "🎉 手机号绑定成功！")
 
-        # 7. Exchange Token 到 Codex 授权页
-        step(index, "开始登录换取给 Codex 使用的专用 rt")
-        # 💡 将动态的 impersonate_target 传给换 Token 的新 Session
-        tokens = exchange_platform_tokens(self.session, self.device_id, code_verifier, continue_url, self.proxy, self.impersonate_target)
-        if not tokens: raise RuntimeError("rt换取失败")
+        # 💡 7. 引导至 Consent 授权页并捕获 Code
+        step(index, "正在进入 Codex Consent 授权页...")
+        consent_url = f"{auth_base}/sign-in-with-chatgpt/codex/consent"
         
-        step(index, "Codex rt 换取完成！")
+        # 顺着重定向链路走到最后获取 Callback Code
+        current_url = consent_url
+        callback_params = None
+        
+        for _ in range(10):
+            response = self.session.get(current_url, headers=navigate_headers, verify=False, timeout=30, allow_redirects=False)
+            callback_params = extract_oauth_callback_params_from_url(str(response.url)) or extract_oauth_callback_params_from_url(str(response.headers.get("Location") or "").strip())
+            if callback_params: 
+                break
+            
+            location = str(response.headers.get("Location") or "").strip()
+            if response.status_code not in (301, 302, 303, 307, 308) or not location: 
+                break
+            current_url = f"{auth_base}{location}" if location.startswith("/") else location
+
+        if not callback_params or not callback_params.get("code"):
+            raise RuntimeError("无法从 Consent 页面捕获到 Callback Code")
+            
+        code = callback_params.get("code")
+        step(index, "✅ 成功捕获授权 Code，正在换取 RT...")
+
+        # 8. 换取最终的 Access Token 和 Refresh Token
+        token_resp = self.session.post(
+            f"{auth_base}/oauth/token", 
+            headers={"Content-Type": "application/x-www-form-urlencoded"}, 
+            data={
+                "grant_type": "authorization_code", 
+                "code": code, 
+                "redirect_uri": platform_oauth_redirect_uri, 
+                "client_id": platform_oauth_client_id, 
+                "code_verifier": code_verifier
+            }, 
+            verify=False, 
+            timeout=60
+        )
+        
+        token_data = _response_json(token_resp)
+        if token_resp.status_code != 200 or not token_data.get("access_token"): 
+            raise RuntimeError(f"换取 Token 失败: {token_resp.status_code} {token_resp.text}")
+
+        step(index, "🎉 Codex RT 换取完成！")
         return {
             "email": email,
             "password": password,
-            "access_token": tokens["access_token"],
-            "refresh_token": tokens["refresh_token"]
+            "access_token": str(token_data.get("access_token")),
+            "refresh_token": str(token_data.get("refresh_token"))
         }
