@@ -1,3 +1,5 @@
+// 📁 frontend/src/pages/Accounts.tsx
+
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   RiArrowLeftSLine,
@@ -9,6 +11,8 @@ import {
   RiShieldUserLine,
   RiRefreshLine,
   RiSearch2Line,
+  RiMacbookLine,
+  RiWindowsLine,
 } from '@remixicon/react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -248,7 +252,25 @@ const Accounts: React.FC = () => {
                             </button>
                           </div>
                           <div className="mt-1 truncate text-xs text-white/38">{account.proxy || '未绑定代理'}</div>
-                          <div className="mt-1 text-xs text-white/32">{new Date(account.createdAt).toLocaleString()}</div>
+                          
+                          {/* 👇 增加日期旁边的设备小徽章 */}
+                          <div className="mt-1 flex items-center gap-2">
+                            <div className="text-xs text-white/32">{new Date(account.createdAt).toLocaleString()}</div>
+                            {account.fingerprint ? (
+                              <div className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-white/60">
+                                {account.fingerprint.platform === 'macOS' ? (
+                                  <RiMacbookLine className="size-3 text-white/80" />
+                                ) : (
+                                  <RiWindowsLine className="size-3 text-white/80" />
+                                )}
+                                {account.fingerprint.platform}
+                              </div>
+                            ) : (
+                              <div className="inline-flex items-center gap-1 rounded-md border border-dashed border-white/10 px-1.5 py-0.5 text-[10px] text-white/30">
+                                无设备指纹
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <div className="flex shrink-0 flex-wrap items-center gap-2">

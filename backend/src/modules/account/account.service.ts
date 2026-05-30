@@ -1,3 +1,5 @@
+// 📁 backend/src/modules/account/account.service.ts
+
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
@@ -9,7 +11,7 @@ export class AccountService {
 
   constructor(
     private prisma: PrismaService,
-  ) {}
+  ) { }
 
   async createAccount(input: string | AccountCreateInput, proxy?: string) {
     const data = normalizeAccountInput(input, proxy);
@@ -23,6 +25,7 @@ export class AccountService {
         accessToken: data.accessToken,
         refreshToken: data.refreshToken,
         status: data.status,
+        fingerprint: data.fingerprint, // 👈 核心：让 Prisma 真正把指纹存进数据库
       },
     });
   }
@@ -33,13 +36,13 @@ export class AccountService {
     const search = params?.search?.trim();
     const where: Prisma.AccountWhereInput = search
       ? {
-          OR: [
-            { email: { contains: search, mode: 'insensitive' } },
-            { profileId: { contains: search, mode: 'insensitive' } },
-            { status: { contains: search, mode: 'insensitive' } },
-            { proxy: { contains: search, mode: 'insensitive' } },
-          ],
-        }
+        OR: [
+          { email: { contains: search, mode: 'insensitive' } },
+          { profileId: { contains: search, mode: 'insensitive' } },
+          { status: { contains: search, mode: 'insensitive' } },
+          { proxy: { contains: search, mode: 'insensitive' } },
+        ],
+      }
       : {};
 
     const [items, total] = await this.prisma.$transaction([

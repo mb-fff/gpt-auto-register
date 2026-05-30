@@ -1,3 +1,5 @@
+// 📁 frontend/src/pages/AccountDetail.tsx
+
 import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import axios from 'axios';
@@ -10,6 +12,11 @@ import {
   RiLinksLine,
   RiRefreshLine,
   RiShieldCheckLine,
+  RiFingerprintLine,
+  RiMacbookLine,
+  RiWindowsLine,
+  RiGlobalLine,
+  RiDoorLine,
 } from '@remixicon/react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -157,6 +164,78 @@ const AccountDetail: React.FC = () => {
               </Card>
             </div>
           </div>
+
+          {/* 👇 新增的设备指纹卡片 */}
+          {account.fingerprint && (
+            <Card className="border-white/[0.08] bg-[#0F131A]/70">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <RiFingerprintLine className="size-5 text-[#6E7BFF]" />
+                  <CardTitle>设备指纹环境</CardTitle>
+                </div>
+                <CardDescription>
+                  注册该账号时所分配的物理与环境特征。后续活跃行为应保持此特征一致。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                
+                {/* 操作系统卡片 */}
+                <div className="flex items-center gap-4 rounded-2xl border border-white/[0.05] bg-white/[0.02] p-4">
+                  <div className=" rounded-full bg-white/[0.05] p-3">
+                    {account.fingerprint.platform === 'macOS' ? (
+                      <RiMacbookLine className="size-6 text-white/70" />
+                    ) : (
+                      <RiWindowsLine className="size-6 text-white/70" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-xs text-white/40">操作系统与硬件</div>
+                    <div className="mt-0.5 text-sm font-medium text-white/80">
+                      {account.fingerprint.platform} ({account.fingerprint.hardwareConcurrency}核 / {account.fingerprint.deviceMemory}GB)
+                    </div>
+                  </div>
+                </div>
+
+                {/* 屏幕分辨率卡片 */}
+                <div className="flex items-center gap-4 rounded-2xl border border-white/[0.05] bg-white/[0.02] p-4">
+                  <div className=" rounded-full bg-white/[0.05] p-3">
+                    <RiDoorLine className="size-6 text-white/70" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-white/40">屏幕分辨率</div>
+                    <div className="mt-0.5 text-sm font-medium text-white/80">
+                      {account.fingerprint.screenSize}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 时区与底层指纹 */}
+                <div className="flex items-center gap-4 rounded-2xl border border-white/[0.05] bg-white/[0.02] p-4">
+                   <div className=" rounded-full bg-white/[0.05] p-3">
+                    <RiGlobalLine className="size-6 text-white/70" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-white/40">系统时区 & 引擎伪装</div>
+                    <div className="mt-0.5 flex items-center gap-2 text-sm font-medium text-white/80">
+                      {account.fingerprint.timezone} 
+                      <span className="rounded bg-[#6E7BFF]/20 px-1.5 py-0.5 text-[10px] text-[#8C98FF]">
+                        {account.fingerprint.impersonate}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* User Agent 长条显示 */}
+                <div className="col-span-1 rounded-2xl border border-white/[0.05] bg-white/[0.02] p-4 md:col-span-2 xl:col-span-3">
+                  <div className="mb-2 text-xs text-white/40">User-Agent</div>
+                  <div className="break-all rounded-lg border border-white/[0.03] bg-black/20 p-2 font-mono text-xs text-white/50">
+                    {account.fingerprint.userAgent}
+                  </div>
+                </div>
+                
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
     </WindowFrame>

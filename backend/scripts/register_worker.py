@@ -1,3 +1,5 @@
+# 📁 backend/scripts/register_worker.py (完整替换)
+
 import sys
 import json
 import argparse
@@ -8,12 +10,23 @@ def main():
     parser.add_argument('--proxy', type=str, default="")
     parser.add_argument('--email', type=str, required=True)
     parser.add_argument('--grizzly_key', type=str, default="")
-    parser.add_argument('--country', type=str, default="6") # 👈 新增：接收 Node 传来的国家代码
+    parser.add_argument('--country', type=str, default="6")
+    parser.add_argument('--fingerprint', type=str, default="{}") # 👈 新增：接收指纹 JSON 字符串
+    
     args = parser.parse_args()
 
     try:
-        # 将参数全部传给核心注册类
-        registrar = PlatformRegistrar(proxy=args.proxy, email=args.email, grizzly_key=args.grizzly_key, country=args.country)
+        # 将指纹解析为 Python 字典
+        fingerprint_data = json.loads(args.fingerprint) if args.fingerprint else {}
+
+        # 传入指纹数据
+        registrar = PlatformRegistrar(
+            proxy=args.proxy, 
+            email=args.email, 
+            grizzly_key=args.grizzly_key, 
+            country=args.country,
+            fingerprint=fingerprint_data # 👈 传递给核心类
+        )
         result = registrar.register(index=1) 
         
         output = {

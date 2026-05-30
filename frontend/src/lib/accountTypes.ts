@@ -1,3 +1,16 @@
+// 📁 frontend/src/lib/accountTypes.ts
+
+export interface DeviceFingerprint {
+  os: string;
+  platform: string;
+  screenSize: string;
+  userAgent: string;
+  timezone: string;
+  hardwareConcurrency: number;
+  deviceMemory: number;
+  impersonate: string;
+}
+
 export interface Account {
   id: string;
   email: string;
@@ -9,6 +22,7 @@ export interface Account {
   rtExpiresAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  fingerprint?: DeviceFingerprint | null;
 }
 
 export function getAccountStatusTone(status: string) {

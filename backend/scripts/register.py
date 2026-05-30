@@ -27,7 +27,9 @@ platform_oauth_redirect_uri = f"{platform_base}/auth/callback"
 platform_oauth_audience = "https://api.openai.com/v1"
 platform_auth0_client = "eyJuYW1lIjoiYXV0aDAtc3BhLWpzIiwidmVyc2lvbiI6IjEuMjEuMCJ9"
 
+# 默认全局变量（将在实例化时被指纹覆盖）
 user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+screen_size = "1920x1080" # 新增屏幕尺寸全局变量
 sec_ch_ua = '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"'
 sec_ch_ua_full_version_list = '"Not_A Brand";v="8.0.0.0", "Chromium";v="120.0.6099.109", "Google Chrome";v="120.0.6099.109"'
 default_timeout = 30
@@ -156,20 +158,15 @@ def _response_json(resp) -> dict:
     try: return resp.json() if isinstance(resp.json(), dict) else {}
     except Exception: return {}
 
-def _decode_jwt_payload(token: str) -> dict:
-    try:
-        payload = token.split(".")[1]
-        padding = 4 - len(payload) % 4
-        if padding != 4: payload += "=" * padding
-        return json.loads(base64.urlsafe_b64decode(payload))
-    except Exception: return {}
-
 class SentinelTokenGenerator:
     MAX_ATTEMPTS = 500000
     ERROR_PREFIX = "wQ8Lk5FbGpA2NcR9dShT6gYjU7VxZ4D"
-    def __init__(self, device_id: str, ua: str):
+    
+    # 💡 修改：接收动态的屏幕尺寸
+    def __init__(self, device_id: str, ua: str, screen: str = "1920x1080"):
         self.device_id = device_id
         self.user_agent = ua
+        self.screen = screen
         self.sid = str(uuid.uuid4())
 
     def _fnv1a_32(self, text: str) -> str:
@@ -181,7 +178,8 @@ class SentinelTokenGenerator:
 
     def _get_config(self) -> list:
         perf_now = random.uniform(1000, 50000)
-        return ["1920x1080", time.strftime("%a %b %d %Y %H:%M:%S GMT+0000 (Coordinated Universal Time)", time.gmtime()), 4294705152, random.random(), self.user_agent, "https://sentinel.openai.com/sentinel/20260124ceb8/sdk.js", None, None, "en-US", random.random(), random.choice(["vendorSub-undefined", "plugins-undefined"]), random.choice(["location", "implementation"]), random.choice(["Object", "Function"]), perf_now, self.sid, "", random.choice([4, 8, 12]), time.time() * 1000 - perf_now]
+        # 💡 修改：注入真实的屏幕分辨率 (如 1366x768) 增加欺骗度
+        return [self.screen, time.strftime("%a %b %d %Y %H:%M:%S GMT+0000 (Coordinated Universal Time)", time.gmtime()), 4294705152, random.random(), self.user_agent, "https://sentinel.openai.com/sentinel/20260124ceb8/sdk.js", None, None, "en-US", random.random(), random.choice(["vendorSub-undefined", "plugins-undefined"]), random.choice(["location", "implementation"]), random.choice(["Object", "Function"]), perf_now, self.sid, "", random.choice([4, 8, 12]), time.time() * 1000 - perf_now]
 
     def _b64(self, data) -> str:
         return base64.b64encode(json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode("utf-8")).decode("ascii")
@@ -204,10 +202,9 @@ class SentinelTokenGenerator:
                 return "gAAAAAB" + payload + "~S"
         return "gAAAAAB" + self.ERROR_PREFIX + self._b64(str(None))
 
-# 🚀 核心修改：将 chrome120 降级为极其稳定且所有库都兼容的 chrome110
-def create_session(proxy: str = "") -> Any:
-    # impersonate="chrome110" 完全足够通过所有的 Sentinel 防护！
-    session = curl_requests.Session(impersonate="chrome110")
+# 🚀 核心修改：支持动态指纹 TLS impersonate 传参
+def create_session(proxy: str = "", impersonate_target: str = "chrome110") -> Any:
+    session = curl_requests.Session(impersonate=impersonate_target)
     if proxy: 
         session.proxies = {"http": proxy, "https": proxy}
     return session
@@ -226,7 +223,8 @@ def request_with_local_retry(session: Any, method: str, url: str, retry_attempts
     return None, last_error
 
 def build_sentinel_token(session: Any, device_id: str, flow: str) -> str:
-    generator = SentinelTokenGenerator(device_id, user_agent)
+    # 使用注入后的全局 user_agent 和 screen_size
+    generator = SentinelTokenGenerator(device_id, user_agent, screen_size)
     
     resp, err = request_with_local_retry(
         session, "post", "https://sentinel.openai.com/backend-api/sentinel/req",
@@ -245,7 +243,6 @@ def build_sentinel_token(session: Any, device_id: str, flow: str) -> str:
     pow_data = data.get("proofofwork") or {}
     p_value = generator.generate_token(str(pow_data.get("seed") or ""), str(pow_data.get("difficulty") or "0")) if pow_data.get("required") and pow_data.get("seed") else generator.generate_requirements_token()
     return json.dumps({"p": p_value, "t": "", "c": token, "id": device_id, "flow": flow}, separators=(",", ":"))
-
 
 def validate_otp(session: Any, device_id: str, code: str):
     headers = dict(common_headers)
@@ -302,25 +299,55 @@ def extract_oauth_callback_params_from_consent_session(session: Any, consent_url
     org_resp = session.post(f"{auth_base}/api/accounts/organization/select", json={"org_id": org_id}, headers=org_headers, verify=False, timeout=30, allow_redirects=False)
     return extract_oauth_callback_params_from_url(str(org_resp.headers.get("Location") or "").strip())
 
-def exchange_platform_tokens(session: Any, device_id: str, code_verifier: str, consent_url: str, proxy: str) -> Optional[dict]:
+# 💡 传入底层的 TLS impersonate_target
+def exchange_platform_tokens(session: Any, device_id: str, code_verifier: str, consent_url: str, proxy: str, impersonate_target: str) -> Optional[dict]:
     callback_params = extract_oauth_callback_params_from_consent_session(session, consent_url, device_id)
     if not callback_params: return None
     code = str(callback_params.get("code") or "").strip()
     if not code: return None
-    resp = create_session(proxy).post(f"{auth_base}/oauth/token", headers={"Content-Type": "application/x-www-form-urlencoded"}, data={"grant_type": "authorization_code", "code": code, "redirect_uri": platform_oauth_redirect_uri, "client_id": platform_oauth_client_id, "code_verifier": code_verifier}, verify=False, timeout=60)
+    resp = create_session(proxy, impersonate_target).post(f"{auth_base}/oauth/token", headers={"Content-Type": "application/x-www-form-urlencoded"}, data={"grant_type": "authorization_code", "code": code, "redirect_uri": platform_oauth_redirect_uri, "client_id": platform_oauth_client_id, "code_verifier": code_verifier}, verify=False, timeout=60)
     data = _response_json(resp)
     if resp.status_code != 200 or not data.get("access_token") or not data.get("refresh_token"): return None
     return {"access_token": str(data.get("access_token")), "refresh_token": str(data.get("refresh_token"))}
 
 
 class PlatformRegistrar:
-    def __init__(self, proxy: str = "", email: str = "", grizzly_key: str = "", country: str = "6") -> None:
+    # 💡 核心修改：接收从 Node 端透传下来的设备指纹配置 fingerprint
+    def __init__(self, proxy: str = "", email: str = "", grizzly_key: str = "", country: str = "6", fingerprint: dict = None) -> None:
+        global user_agent, screen_size, common_headers, navigate_headers
+
         self.proxy = proxy
         self.email = email
         self.country = country
-        self.session = create_session(proxy)
         self.device_id = str(uuid.uuid4())
         self.sms_provider = GrizzlySMSProvider(grizzly_key) if grizzly_key else None
+        
+        # 🛡️ 1. 解析 Node 端下发的虚拟设备指纹
+        self.fingerprint = fingerprint or {}
+        self.impersonate_target = self.fingerprint.get("impersonate", "chrome110") # TLS 伪装
+        
+        if self.fingerprint:
+            new_ua = self.fingerprint.get("userAgent", user_agent)
+            new_platform = self.fingerprint.get("platform", "Windows")
+            new_screen = self.fingerprint.get("screenSize", screen_size)
+            
+            # 🛡️ 2. 覆盖全局变量（每个 Worker 都是独立进程，覆盖全局安全且生效）
+            user_agent = new_ua
+            screen_size = new_screen
+            
+            # 🛡️ 3. 动态更新所有后续请求的 Headers
+            common_headers["user-agent"] = new_ua
+            navigate_headers["user-agent"] = new_ua
+            common_headers["sec-ch-ua-platform"] = f'"{new_platform}"'
+            navigate_headers["sec-ch-ua-platform"] = f'"{new_platform}"'
+            
+            # 如果是 macOS，清理掉 Windows 特有的 platform-version
+            if new_platform == "macOS":
+                common_headers["sec-ch-ua-platform-version"] = '""'
+                navigate_headers["sec-ch-ua-platform-version"] = '""'
+                
+        # 🛡️ 4. 初始化应用了最新 TLS 指纹的 curl_cffi Session
+        self.session = create_session(self.proxy, self.impersonate_target)
 
     def close(self) -> None:
         self.session.close()
@@ -427,8 +454,8 @@ class PlatformRegistrar:
 
         # 7. Exchange Token 到 Codex 授权页
         step(index, "开始登录换取给 Codex 使用的专用 rt")
-        continue_url = f"{auth_base}/sign-in-with-chatgpt/codex/consent"
-        tokens = exchange_platform_tokens(self.session, self.device_id, code_verifier, continue_url, self.proxy)
+        # 💡 将动态的 impersonate_target 传给换 Token 的新 Session
+        tokens = exchange_platform_tokens(self.session, self.device_id, code_verifier, continue_url, self.proxy, self.impersonate_target)
         if not tokens: raise RuntimeError("rt换取失败")
         
         step(index, "Codex rt 换取完成！")

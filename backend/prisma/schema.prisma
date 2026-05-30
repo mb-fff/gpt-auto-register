@@ -16,6 +16,7 @@ model Account {
   refreshToken  String?
   accessToken   String?
   rtExpiresAt   DateTime?
+  fingerprint   Json?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }

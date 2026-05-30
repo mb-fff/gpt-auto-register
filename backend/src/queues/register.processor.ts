@@ -1,3 +1,5 @@
+// 📁 backend/src/queues/register.processor.ts (完整替换)
+
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
@@ -5,6 +7,7 @@ import { spawn } from 'child_process';
 import * as path from 'path';
 import { AccountService } from '../modules/account/account.service';
 import { EmailService } from '../common/email/email.service';
+import { generateDeviceFingerprint } from '../utils/fingerprint.util'; // 👈 引入生成器
 
 @Processor('register-queue', {
   concurrency: 5,
@@ -22,14 +25,17 @@ export class RegisterProcessor extends WorkerHost {
   async process(job: Job) {
     const proxyUrl = job.data.proxy || '';
     const scriptPath = path.join(__dirname, '../../scripts/register_worker.py');
-
     const grizzlyKey = process.env.GRIZZLY_API_KEY || '';
-
-    // 🌍 核心修复：从队列读取前端传来的国家代码，默认兜底 6
     const smsCountry = job.data.smsCountry ? String(job.data.smsCountry) : '6';
 
     const tempEmail = this.emailService.generateTempEmail();
+
+    // 🌍 核心新增：为该次注册任务生成专属设备指纹
+    const fingerprint = generateDeviceFingerprint();
+    const fingerprintJson = JSON.stringify(fingerprint);
+
     this.logger.log(`🚀 开始调用 Python Worker，代理: ${proxyUrl}, 邮箱: ${tempEmail}, 接码国家: ${smsCountry}`);
+    this.logger.log(`🧬 注入设备指纹: [${fingerprint.platform}] ${fingerprint.screenSize}`);
 
     return new Promise((resolve, reject) => {
       const child = spawn('python3', [
@@ -37,7 +43,8 @@ export class RegisterProcessor extends WorkerHost {
         '--proxy', proxyUrl,
         '--email', tempEmail,
         '--grizzly_key', grizzlyKey,
-        '--country', smsCountry // 👈 动态传入所选国家
+        '--country', smsCountry,
+        '--fingerprint', fingerprintJson // 👈 动态传入指纹数据
       ]);
 
       let finalResult: any = null;
@@ -54,7 +61,7 @@ export class RegisterProcessor extends WorkerHost {
             const code = await this.emailService.waitForCode(tempEmail);
 
             if (code) {
-              this.logger.log(`✅ IMAP 拿到验证码 ${code}，通过 stdin 喂给 Python`);
+              this.logger.log(`✅ IMAP 拿到验证码 ${code}，喂给 Python`);
               child.stdin.write(code + '\n');
             } else {
               this.logger.error('⏰ 接码超时，终止被卡住的 Python 进程');
@@ -83,14 +90,17 @@ export class RegisterProcessor extends WorkerHost {
           const { email, password, access_token, refresh_token } = finalResult.data;
 
           try {
+            // 💾 核心新增：将生成的指纹连同账号一起入库
             await this.accountService.createAccount({
               email,
               password,
               accessToken: access_token,
               refreshToken: refresh_token,
-              proxy: proxyUrl
-            });
-            this.logger.log(`🎉 任务彻底完成，Codex rt 已入库: ${email}`);
+              proxy: proxyUrl,
+              fingerprint: fingerprint // 👈 存入数据库
+            } as any); // 注意：此处可能需要在 AccountService 的 DTO 中放开 fingerprint 字段的类型验证
+
+            this.logger.log(`🎉 任务彻底完成，账号与指纹已入库: ${email}`);
             resolve({ success: true, email });
           } catch (dbError) {
             reject(dbError);
