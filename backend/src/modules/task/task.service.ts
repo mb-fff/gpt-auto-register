@@ -1,8 +1,12 @@
+// 📁 backend/src/modules/task/task.service.ts
+
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { normalizeRetryAttempts } from './retry-attempts';
+// 👇 引入刚才导出的进程追踪 Map
+import { activePythonProcesses } from '../../queues/register.processor';
 
 @Injectable()
 export class TaskService {
@@ -13,7 +17,6 @@ export class TaskService {
     @InjectQueue('register-queue') private registerQueue: Queue,
   ) { }
 
-  // 增加 smsCountry 参数
   async createRegisterTasks(count: number, proxy?: string, retryAttempts?: number, smsCountry?: string) {
     this.logger.warn(`⚠️ 创建 ${count} 个注册任务 (接码国家: ${smsCountry || '默认'})`);
     const attempts = normalizeRetryAttempts(retryAttempts);
@@ -26,7 +29,7 @@ export class TaskService {
           count: i + 1,
           proxy,
           retryAttempts: attempts,
-          smsCountry: smsCountry || '6' // 👈 核心：将选定的国家代码存入队列数据
+          smsCountry: smsCountry || '6'
         },
         { attempts, backoff: { type: 'exponential', delay: 5000 } }
       );
@@ -39,7 +42,6 @@ export class TaskService {
     };
   }
 
-  // ... (保留你原有的 getQueueStatus, getRecentJobs, serializeJob 等所有其他方法不变) ...
   async getQueueStatus() {
     return {
       waiting: await this.registerQueue.getWaitingCount(),
@@ -82,11 +84,38 @@ export class TaskService {
     return { message: '任务已重新加入队列', job: await this.serializeJob(job) };
   }
 
+  // 🚀 核心更新：拦截 active 状态并执行 kill 强杀
   async removeJob(jobId: string) {
     const job = await this.getExistingJob(jobId);
     const state = await job.getState();
-    try { await job.remove({ removeChildren: true }); } catch (error: any) { throw new BadRequestException(error.message || '删除任务失败'); }
-    return { message: '任务已删除', jobId, previousState: state };
+
+    // 如果任务正在执行，直接 Kill 掉底层的 Python 进程
+    if (state === 'active') {
+      const child = activePythonProcesses.get(jobId);
+      if (child) {
+        child.kill(); // 触发退出，BullMQ 会自动将其置为 Failed
+        activePythonProcesses.delete(jobId);
+        return { message: '已强制终止执行中的任务，它已被标记为失败', jobId, previousState: state };
+      }
+    }
+
+    try {
+      await job.remove({ removeChildren: true });
+    } catch (error: any) {
+      throw new BadRequestException(error.message || '删除任务失败');
+    }
+    return { message: '任务记录已删除', jobId, previousState: state };
+  }
+
+  // 🚀 新增接口：一键强杀所有正在执行的任务
+  async stopActiveJobs() {
+    let count = 0;
+    for (const [jobId, child] of activePythonProcesses.entries()) {
+      child.kill();
+      count++;
+    }
+    activePythonProcesses.clear();
+    return { message: `已强杀 ${count} 个正在执行的底层进程` };
   }
 
   async pauseQueue() {

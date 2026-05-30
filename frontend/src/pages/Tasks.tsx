@@ -1,3 +1,5 @@
+// 📁 frontend/src/pages/Tasks.tsx
+
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -11,6 +13,8 @@ import {
   RiRadarLine,
   RiRocket2Line,
   RiUserSearchLine,
+  RiStopCircleLine,
+  RiDeleteBin6Line
 } from '@remixicon/react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -19,7 +23,6 @@ import { Input } from '../components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { StatusBadge } from '../components/os/StatusBadge';
 import { WindowFrame } from '../components/os/WindowFrame';
-// 👇 1. 引入我们刚刚创建的 Grizzly 接码配置面板
 import { GrizzlyConfigPanel } from '../components/os/GrizzlyConfigPanel';
 import {
   TaskJob,
@@ -30,11 +33,10 @@ import {
 } from '../lib/taskTypes';
 
 const Tasks: React.FC = () => {
-  const [count, setCount] = useState('1');
-  const [retryAttempts, setRetryAttempts] = useState('1');
+  const [count, setCount] = useState('5');
+  const [retryAttempts, setRetryAttempts] = useState('3');
   const [proxy, setProxy] = useState('');
-  // 👇 2. 新增一个状态，用于存储当前选中的接码国家，默认 '187' (美国)
-  const [smsCountry, setSmsCountry] = useState('187'); 
+  const [smsCountry, setSmsCountry] = useState('6'); 
   
   const [submitting, setSubmitting] = useState(false);
   const [lastJobs, setLastJobs] = useState<string[]>([]);
@@ -94,13 +96,13 @@ const Tasks: React.FC = () => {
         count: parsedCount,
         retryAttempts: parsedRetryAttempts,
         proxy: proxy || undefined,
-        smsCountry, // 👇 3. 核心：提交任务时，把选中的国家代码发给后端
+        smsCountry, 
       });
       setLastJobs(res.data?.jobIds || []);
       toast.success(`成功创建 ${parsedCount} 个注册任务！(接码国家: ${smsCountry})`);
       await fetchQueueSnapshot();
-      setCount('1');
-      setRetryAttempts('1');
+      setCount('5');
+      setRetryAttempts('3');
       setProxy('');
     } catch (error) {
       toast.error('创建任务失败');
@@ -156,7 +158,6 @@ const Tasks: React.FC = () => {
                 />
               </label>
 
-              {/* 👇 4. 把我们新写的 GrizzlyConfigPanel 插入到表单中 */}
               <GrizzlyConfigPanel 
                 selectedCountry={smsCountry}
                 onCountrySelect={setSmsCountry}
@@ -170,7 +171,6 @@ const Tasks: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* ... 右侧的状态展示区域保持完全不变 ... */}
         <div className="grid gap-5">
           <Card>
             <CardHeader>
@@ -231,6 +231,12 @@ const Tasks: React.FC = () => {
                     暂停队列
                   </Button>
                 )}
+                {/* 🚀 新增的一键停止全部执行按钮 */}
+                <Button size="sm" variant="danger" disabled={acting === 'stop-active' || status.active === 0} onClick={() => runQueueAction('stop-active', () => axios.post('/api/tasks/stop-active'), '已发送停止信号')}>
+                  <RiStopCircleLine className="size-4" />
+                  停止执行中
+                </Button>
+
                 <Button size="sm" variant="ghost" disabled={acting === 'clean-completed'} onClick={() => runQueueAction('clean-completed', () => axios.post('/api/tasks/clean', { type: 'completed', limit: 200 }), '已清理完成任务')}>
                   清理完成
                 </Button>
@@ -240,7 +246,7 @@ const Tasks: React.FC = () => {
                 <Link to="/monitor">
                   <Button size="sm" variant="secondary">
                     <RiRadarLine className="size-4" />
-                    打开活动流
+                    活动流
                   </Button>
                 </Link>
               </div>
@@ -298,9 +304,25 @@ const Tasks: React.FC = () => {
                         {job.progress?.message ? ` · ${job.progress.message}` : ''}
                       </div>
                     </div>
-                    <StatusBadge tone={getJobStateTone(job.state)} pulse={job.state === 'active'}>
-                      {getJobStateLabel(job.state)}
-                    </StatusBadge>
+                    
+                    {/* 🚀 增加单任务维度的 控制/清除 按钮 */}
+                    <div className="flex items-center gap-2">
+                      <StatusBadge tone={getJobStateTone(job.state)} pulse={job.state === 'active'}>
+                        {getJobStateLabel(job.state)}
+                      </StatusBadge>
+
+                      {(job.state === 'active' || job.state === 'waiting' || job.state === 'delayed') ? (
+                        <Button size="sm" variant="danger" disabled={acting === `stop-${job.id}`} onClick={() => runQueueAction(`stop-${job.id}`, () => axios.delete(`/api/tasks/jobs/${job.id}`), '中止信号已发送')}>
+                          <RiStopCircleLine className="size-4" />
+                          停止
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="ghost" disabled={acting === `del-${job.id}`} onClick={() => runQueueAction(`del-${job.id}`, () => axios.delete(`/api/tasks/jobs/${job.id}`), '记录已清除')}>
+                          <RiDeleteBin6Line className="size-4" />
+                          清除
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   {job.failedReason && (
                     <div className="mt-3 rounded-2xl border border-red-300/15 bg-red-500/10 px-3 py-2 text-xs text-red-100/80">

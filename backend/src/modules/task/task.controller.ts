@@ -1,3 +1,5 @@
+// 📁 backend/src/modules/task/task.controller.ts
+
 import { Controller, Post, Get, Body, Query, Param, Delete } from '@nestjs/common';
 import { TaskService } from './task.service';
 
@@ -7,7 +9,6 @@ export class TaskController {
 
   @Post('register')
   createRegister(@Body() body: { count: number; proxy?: string; retryAttempts?: number; smsCountry?: string }) {
-    // 增加 smsCountry 透传
     return this.taskService.createRegisterTasks(body.count, body.proxy, body.retryAttempts, body.smsCountry);
   }
 
@@ -29,6 +30,12 @@ export class TaskController {
   @Delete('jobs/:id')
   removeJob(@Param('id') id: string) {
     return this.taskService.removeJob(id);
+  }
+
+  // 🚀 暴露一键强杀接口
+  @Post('stop-active')
+  stopActiveJobs() {
+    return this.taskService.stopActiveJobs();
   }
 
   @Post('pause')
