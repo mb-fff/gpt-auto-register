@@ -99,8 +99,8 @@ const Tasks: React.FC = () => {
       setLastJobs(res.data?.jobIds || []);
       toast.success(`成功创建 ${parsedCount} 个注册任务！(接码国家: ${smsCountry})`);
       await fetchQueueSnapshot();
-      setCount('5');
-      setRetryAttempts('3');
+      setCount('1');
+      setRetryAttempts('1');
       setProxy('');
     } catch (error) {
       toast.error('创建任务失败');
