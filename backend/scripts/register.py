@@ -10,13 +10,12 @@ import uuid
 import sys
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlencode, urlparse
-from typing import Any
+from typing import Any, Optional, Tuple, Dict
 
 import requests
 import urllib3
+# 🚀 核心黑科技库
 from curl_cffi import requests as curl_requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -28,19 +27,17 @@ platform_oauth_redirect_uri = f"{platform_base}/auth/callback"
 platform_oauth_audience = "https://api.openai.com/v1"
 platform_auth0_client = "eyJuYW1lIjoiYXV0aDAtc3BhLWpzIiwidmVyc2lvbiI6IjEuMjEuMCJ9"
 
-user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
-sec_ch_ua = '"Google Chrome";v="145", "Not?A_Brand";v="8", "Chromium";v="145"'
-sec_ch_ua_full_version_list = '"Chromium";v="145.0.0.0", "Not:A-Brand";v="99.0.0.0", "Google Chrome";v="145.0.0.0"'
+user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+sec_ch_ua = '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"'
+sec_ch_ua_full_version_list = '"Not_A Brand";v="8.0.0.0", "Chromium";v="120.0.6099.109", "Google Chrome";v="120.0.6099.109"'
 default_timeout = 30
 
-# --- GrizzlySMS 封装增强版 ---
 class GrizzlySMSProvider:
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.base_url = "https://api.grizzlysms.com/stubs/handler_api.php"
 
     def get_balance(self) -> float:
-        """查询账户余额"""
         params = {"api_key": self.api_key, "action": "getBalance"}
         try:
             res = requests.get(self.base_url, params=params, timeout=10)
@@ -50,15 +47,13 @@ class GrizzlySMSProvider:
         except Exception:
             return 0.0
 
-    def get_number(self, service="dr", country="6") -> tuple[str, str]:
-        """购买号码，带有详细报错透传"""
+    def get_number(self, service="dr", country="6") -> Tuple[str, str]:
         params = {"api_key": self.api_key, "action": "getNumber", "service": service, "country": country}
         res = requests.get(self.base_url, params=params, timeout=15)
         if res.text.startswith("ACCESS_NUMBER"):
             _, order_id, number = res.text.split(":")
             return order_id, number
         
-        # 解析常见错误
         error_msg = res.text
         if "NO_NUMBERS" in res.text: error_msg = "该国家暂时无号 (NO_NUMBERS)"
         elif "NO_BALANCE" in res.text: error_msg = "余额不足 (NO_BALANCE)"
@@ -66,8 +61,7 @@ class GrizzlySMSProvider:
         
         raise RuntimeError(f"GrizzlySMS 购买号码失败: {error_msg}")
 
-    def wait_for_sms(self, order_id: str, timeout=180) -> str | None:
-        """等待短信，最多等待 3 分钟"""
+    def wait_for_sms(self, order_id: str, timeout=180) -> Optional[str]:
         start_time = time.time()
         params = {"api_key": self.api_key, "action": "getStatus", "id": order_id}
         while time.time() - start_time < timeout:
@@ -129,7 +123,7 @@ navigate_headers = {
 def step(index: int, text: str, color: str = ""):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] [Worker-{index}] {text}", file=sys.stderr, flush=True)
 
-def _make_trace_headers() -> dict[str, str]:
+def _make_trace_headers() -> Dict[str, str]:
     trace_id = str(random.getrandbits(64))
     parent_id = str(random.getrandbits(64))
     return {
@@ -141,7 +135,7 @@ def _make_trace_headers() -> dict[str, str]:
         "x-datadog-trace-id": trace_id,
     }
 
-def _generate_pkce() -> tuple[str, str]:
+def _generate_pkce() -> Tuple[str, str]:
     code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(64)).rstrip(b"=").decode("ascii")
     code_challenge = base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode("ascii")).digest()).rstrip(b"=").decode("ascii")
     return code_verifier, code_challenge
@@ -152,7 +146,7 @@ def _random_password(length: int = 16) -> str:
     random.shuffle(value)
     return "".join(value)
 
-def _random_name() -> tuple[str, str]:
+def _random_name() -> Tuple[str, str]:
     return random.choice(["James", "Robert", "John", "Michael", "David", "Mary", "Emma", "Olivia"]), random.choice(["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller"])
 
 def _random_birthdate() -> str:
@@ -210,34 +204,50 @@ class SentinelTokenGenerator:
                 return "gAAAAAB" + payload + "~S"
         return "gAAAAAB" + self.ERROR_PREFIX + self._b64(str(None))
 
-def build_sentinel_token(session: requests.Session, device_id: str, flow: str) -> str:
+# 🚀 核心修改：将 chrome120 降级为极其稳定且所有库都兼容的 chrome110
+def create_session(proxy: str = "") -> Any:
+    # impersonate="chrome110" 完全足够通过所有的 Sentinel 防护！
+    session = curl_requests.Session(impersonate="chrome110")
+    if proxy: 
+        session.proxies = {"http": proxy, "https": proxy}
+    return session
+
+def request_with_local_retry(session: Any, method: str, url: str, retry_attempts: int = 3, **kwargs) -> Tuple[Optional[Any], str]:
+    last_error = ""
+    if "timeout" not in kwargs:
+        kwargs["timeout"] = default_timeout
+        
+    for _ in range(max(1, retry_attempts)):
+        try: 
+            return session.request(method.upper(), url, **kwargs), ""
+        except Exception as error: 
+            last_error = str(error)
+            time.sleep(1)
+    return None, last_error
+
+def build_sentinel_token(session: Any, device_id: str, flow: str) -> str:
     generator = SentinelTokenGenerator(device_id, user_agent)
-    resp = session.post("https://sentinel.openai.com/backend-api/sentinel/req", data=json.dumps({"p": generator.generate_requirements_token(), "id": device_id, "flow": flow}), headers={"Content-Type": "text/plain;charset=UTF-8", "Origin": "https://sentinel.openai.com", "User-Agent": user_agent}, timeout=20, verify=False)
+    
+    resp, err = request_with_local_retry(
+        session, "post", "https://sentinel.openai.com/backend-api/sentinel/req",
+        data=json.dumps({"p": generator.generate_requirements_token(), "id": device_id, "flow": flow}),
+        headers={"Content-Type": "text/plain;charset=UTF-8", "Origin": "https://sentinel.openai.com", "User-Agent": user_agent},
+        timeout=20, verify=False
+    )
+    
+    if resp is None: 
+        raise RuntimeError(f"Sentinel 网络请求被阻断或超时: {err}")
+    
     data = _response_json(resp)
     token = str(data.get("token") or "").strip()
-    if resp.status_code != 200 or not token: raise RuntimeError(f"sentinel_req_failed_{resp.status_code}")
+    if resp.status_code != 200 or not token: 
+        raise RuntimeError(f"sentinel_req_failed_{resp.status_code}")
     pow_data = data.get("proofofwork") or {}
     p_value = generator.generate_token(str(pow_data.get("seed") or ""), str(pow_data.get("difficulty") or "0")) if pow_data.get("required") and pow_data.get("seed") else generator.generate_requirements_token()
     return json.dumps({"p": p_value, "t": "", "c": token, "id": device_id, "flow": flow}, separators=(",", ":"))
 
-def create_session(proxy: str = "") -> Any:
-    session = requests.Session()
-    retry = Retry(total=2, connect=2, status_forcelist=(429, 500, 502, 503, 504))
-    adapter = HTTPAdapter(max_retries=retry, pool_connections=50, pool_maxsize=50)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-    session.verify = False
-    if proxy: session.proxies.update({"http": proxy, "https": proxy})
-    return session
 
-def request_with_local_retry(session: requests.Session, method: str, url: str, retry_attempts: int = 3, **kwargs):
-    last_error = ""
-    for _ in range(max(1, retry_attempts)):
-        try: return session.request(method.upper(), url, timeout=default_timeout, **kwargs), ""
-        except Exception as error: last_error = str(error); time.sleep(1)
-    return None, last_error
-
-def validate_otp(session: requests.Session, device_id: str, code: str):
+def validate_otp(session: Any, device_id: str, code: str):
     headers = dict(common_headers)
     headers["referer"] = f"{auth_base}/email-verification"
     headers["oai-device-id"] = device_id
@@ -248,7 +258,7 @@ def validate_otp(session: requests.Session, device_id: str, code: str):
     resp, error = request_with_local_retry(session, "post", f"{auth_base}/api/accounts/email-otp/validate", json={"code": code}, headers=headers, verify=False)
     return resp, error
 
-def extract_oauth_callback_params_from_url(url: str) -> dict[str, str] | None:
+def extract_oauth_callback_params_from_url(url: str) -> Optional[Dict[str, str]]:
     if not url: return None
     try: params = parse_qs(urlparse(url).query)
     except Exception: return None
@@ -256,7 +266,7 @@ def extract_oauth_callback_params_from_url(url: str) -> dict[str, str] | None:
     if not code: return None
     return {"code": code, "state": str((params.get("state") or [""])[0]).strip()}
 
-def extract_oauth_callback_params_from_consent_session(session: requests.Session, consent_url: str, device_id: str) -> dict[str, str] | None:
+def extract_oauth_callback_params_from_consent_session(session: Any, consent_url: str, device_id: str) -> Optional[Dict[str, str]]:
     if consent_url.startswith("/"): consent_url = f"{auth_base}{consent_url}"
     current_url = consent_url
     for _ in range(10):
@@ -292,7 +302,7 @@ def extract_oauth_callback_params_from_consent_session(session: requests.Session
     org_resp = session.post(f"{auth_base}/api/accounts/organization/select", json={"org_id": org_id}, headers=org_headers, verify=False, timeout=30, allow_redirects=False)
     return extract_oauth_callback_params_from_url(str(org_resp.headers.get("Location") or "").strip())
 
-def exchange_platform_tokens(session: requests.Session, device_id: str, code_verifier: str, consent_url: str, proxy: str) -> dict | None:
+def exchange_platform_tokens(session: Any, device_id: str, code_verifier: str, consent_url: str, proxy: str) -> Optional[dict]:
     callback_params = extract_oauth_callback_params_from_consent_session(session, consent_url, device_id)
     if not callback_params: return None
     code = str(callback_params.get("code") or "").strip()
@@ -343,12 +353,12 @@ class PlatformRegistrar:
         code = self._get_ipc_otp()
         validate_otp(self.session, self.device_id, code)
 
-        # 5. Create Profile (💡 这里就是修复了 too many values to unpack 的地方)
+        # 5. Create Profile
         headers = dict(common_headers); headers["oai-device-id"] = self.device_id
         headers["openai-sentinel-token"] = build_sentinel_token(self.session, self.device_id, "oauth_create_account")
         resp, _ = request_with_local_retry(self.session, "post", f"{auth_base}/api/accounts/create_account", json={"name": f"{first_name} {last_name}", "birthdate": _random_birthdate()}, headers=headers)
 
-        # 6. GrizzlySMS 手机接码验证
+        # 6. GrizzlySMS 手机接码验证 (拒绝卡死版)
         if self.sms_provider:
             balance = self.sms_provider.get_balance()
             step(index, f"💰 GrizzlySMS 当前余额: {balance} 卢布")
@@ -361,27 +371,58 @@ class PlatformRegistrar:
 
             sms_headers = dict(common_headers); sms_headers["oai-device-id"] = self.device_id
             sms_headers["openai-sentinel-token"] = build_sentinel_token(self.session, self.device_id, "phone_verification_send")
-            phone_payload = {"phone_number": f"+{phone_number}"}
-            sms_resp, _ = request_with_local_retry(self.session, "post", f"{auth_base}/api/accounts/phone-verification/send", json=phone_payload, headers=sms_headers)
+            
+            endpoints = [
+                {"send": "/api/accounts/phone_verify/send", "verify": "/api/accounts/phone_verify/validate", "field": "phone_number"},
+                {"send": "/api/accounts/phone_verification/send", "verify": "/api/accounts/phone_verification/validate", "field": "phone_number"},
+                {"send": "/api/accounts/phone_verify/generate", "verify": "/api/accounts/phone_verify/validate", "field": "number"},
+            ]
+            
+            sms_resp = None
+            active_endpoint = None
+            last_network_error = "" 
+            
+            for ep in endpoints:
+                step(index, f"正在嗅探 OpenAI 短信路由: {ep['send']}")
+                phone_payload = {ep["field"]: f"+{phone_number}"}
+                
+                resp, err = request_with_local_retry(self.session, "post", f"{auth_base}{ep['send']}", json=phone_payload, headers=sms_headers, retry_attempts=1, timeout=10)
+                
+                if resp is None:
+                    last_network_error = err
+                    step(index, f"❌ 网络请求超时或代理拒绝连接: {err}")
+                    continue
+
+                if resp.status_code != 404 and "Invalid URL" not in resp.text:
+                    sms_resp = resp
+                    active_endpoint = ep
+                    step(index, f"✅ 成功找到有效路由: {ep['send']}")
+                    break
+                else:
+                    step(index, f"⚠️ 路由已废弃 (HTTP {resp.status_code})")
             
             if sms_resp is None or sms_resp.status_code != 200:
-                self.sms_provider.set_status(order_id, 8) # OpenAI 拒绝，立马取消订单退款！
-                raise RuntimeError(f"OpenAI 拒绝向该号码发送短信，已取消订单退款: {_response_json(sms_resp)}")
+                self.sms_provider.set_status(order_id, 8) # 退款
+                
+                if sms_resp is None:
+                    raise RuntimeError(f"OpenAI 拒绝发送短信：底层网络连接彻底失败或代理超时。真实报错: {last_network_error}")
+                else:
+                    raise RuntimeError(f"OpenAI 拒绝发送短信 (HTTP {sms_resp.status_code})，已被拦截！原始网页内容: {sms_resp.text[:500]}")
 
             step(index, "⏳ OpenAI 短信发送成功，开始轮询 GrizzlySMS 获取验证码 (最多等3分钟)...")
             sms_code = self.sms_provider.wait_for_sms(order_id)
             if not sms_code:
-                self.sms_provider.set_status(order_id, 8) # 超时，取消订单退款！
+                self.sms_provider.set_status(order_id, 8) # 超时退款
                 raise RuntimeError("GrizzlySMS 接收短信验证码超时，已取消订单退款")
 
             step(index, f"✅ 成功获取短信验证码: {sms_code}，正在向 OpenAI 提交验证")
             sms_headers["openai-sentinel-token"] = build_sentinel_token(self.session, self.device_id, "phone_verification_validate")
-            verify_resp, _ = request_with_local_retry(self.session, "post", f"{auth_base}/api/accounts/phone-verification/validate", json={"code": sms_code}, headers=sms_headers)
+            verify_resp, _ = request_with_local_retry(self.session, "post", f"{auth_base}{active_endpoint['verify']}", json={"code": sms_code}, headers=sms_headers)
             
             if verify_resp is None or verify_resp.status_code != 200:
                 raise RuntimeError(f"手机验证码错误或被 OpenAI 拒绝: {_response_json(verify_resp)}")
             
-            self.sms_provider.set_status(order_id, 3) # 标记订单彻底完成
+            self.sms_provider.set_status(order_id, 3) # 标记完成
             step(index, "🎉 手机号风控验证完美通过！")
 
         # 7. Exchange Token 到 Codex 授权页
@@ -395,5 +436,5 @@ class PlatformRegistrar:
             "email": email,
             "password": password,
             "access_token": tokens["access_token"],
-            "refresh_token": tokens["refresh_token"] # 这就是您要拿的给 codex 用的 rt
+            "refresh_token": tokens["refresh_token"]
         }

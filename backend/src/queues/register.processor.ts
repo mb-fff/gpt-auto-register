@@ -7,7 +7,7 @@ import { AccountService } from '../modules/account/account.service';
 import { EmailService } from '../common/email/email.service';
 
 @Processor('register-queue', {
-  concurrency: 5, // 保持你设置好的并发数
+  concurrency: 5,
 })
 export class RegisterProcessor extends WorkerHost {
   private readonly logger = new Logger(RegisterProcessor.name);
@@ -20,22 +20,24 @@ export class RegisterProcessor extends WorkerHost {
   }
 
   async process(job: Job) {
-    const proxyUrl = job.data.proxy;
+    const proxyUrl = job.data.proxy || '';
     const scriptPath = path.join(__dirname, '../../scripts/register_worker.py');
 
-    // 🔑 获取 GrizzlySMS 的 API Key
     const grizzlyKey = process.env.GRIZZLY_API_KEY || '';
 
+    // 🌍 核心修复：从队列读取前端传来的国家代码，默认兜底 6
+    const smsCountry = job.data.smsCountry ? String(job.data.smsCountry) : '6';
+
     const tempEmail = this.emailService.generateTempEmail();
-    this.logger.log(`🚀 开始调用 Python Worker，代理: ${proxyUrl}, 邮箱: ${tempEmail}`);
+    this.logger.log(`🚀 开始调用 Python Worker，代理: ${proxyUrl}, 邮箱: ${tempEmail}, 接码国家: ${smsCountry}`);
 
     return new Promise((resolve, reject) => {
-      // 🚀 核心：在这里把 grizzly_key 作为参数传给 Python 子进程
       const child = spawn('python3', [
         scriptPath,
         '--proxy', proxyUrl,
         '--email', tempEmail,
-        '--grizzly_key', grizzlyKey
+        '--grizzly_key', grizzlyKey,
+        '--country', smsCountry // 👈 动态传入所选国家
       ]);
 
       let finalResult: any = null;
@@ -85,7 +87,7 @@ export class RegisterProcessor extends WorkerHost {
               email,
               password,
               accessToken: access_token,
-              refreshToken: refresh_token, // 现在这个存入的就是 Codex rt
+              refreshToken: refresh_token,
               proxy: proxyUrl
             });
             this.logger.log(`🎉 任务彻底完成，Codex rt 已入库: ${email}`);
