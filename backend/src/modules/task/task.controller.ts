@@ -3,11 +3,12 @@ import { TaskService } from './task.service';
 
 @Controller('tasks')
 export class TaskController {
-  constructor(private taskService: TaskService) {}
+  constructor(private taskService: TaskService) { }
 
   @Post('register')
-  createRegister(@Body() body: { count: number; proxy?: string; retryAttempts?: number }) {
-    return this.taskService.createRegisterTasks(body.count, body.proxy, body.retryAttempts);
+  createRegister(@Body() body: { count: number; proxy?: string; retryAttempts?: number; smsCountry?: string }) {
+    // 增加 smsCountry 透传
+    return this.taskService.createRegisterTasks(body.count, body.proxy, body.retryAttempts, body.smsCountry);
   }
 
   @Get('status')

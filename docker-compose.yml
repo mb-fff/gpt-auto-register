@@ -39,6 +39,7 @@ services:
       IMAP_USER: ${IMAP_USER:-}
       IMAP_PASS: ${IMAP_PASS:-}
       PRISMA_ENGINES_MIRROR: https://registry.npmmirror.com/-/binary/prisma
+      GRIZZLY_API_KEY: ${GRIZZLY_API_KEY:-}
       PORT: "3001"
     ports:
       - "13001:3001"

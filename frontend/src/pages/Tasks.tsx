@@ -19,6 +19,8 @@ import { Input } from '../components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { StatusBadge } from '../components/os/StatusBadge';
 import { WindowFrame } from '../components/os/WindowFrame';
+// 👇 1. 引入我们刚刚创建的 Grizzly 接码配置面板
+import { GrizzlyConfigPanel } from '../components/os/GrizzlyConfigPanel';
 import {
   TaskJob,
   QueueStatus,
@@ -31,6 +33,9 @@ const Tasks: React.FC = () => {
   const [count, setCount] = useState('5');
   const [retryAttempts, setRetryAttempts] = useState('3');
   const [proxy, setProxy] = useState('');
+  // 👇 2. 新增一个状态，用于存储当前选中的接码国家，默认 '6' (印尼)
+  const [smsCountry, setSmsCountry] = useState('6'); 
+  
   const [submitting, setSubmitting] = useState(false);
   const [lastJobs, setLastJobs] = useState<string[]>([]);
   const [status, setStatus] = useState<QueueStatus>(emptyQueueStatus);
@@ -89,9 +94,10 @@ const Tasks: React.FC = () => {
         count: parsedCount,
         retryAttempts: parsedRetryAttempts,
         proxy: proxy || undefined,
+        smsCountry, // 👇 3. 核心：提交任务时，把选中的国家代码发给后端
       });
       setLastJobs(res.data?.jobIds || []);
-      toast.success(`成功创建 ${parsedCount} 个注册任务！`);
+      toast.success(`成功创建 ${parsedCount} 个注册任务！(接码国家: ${smsCountry})`);
       await fetchQueueSnapshot();
       setCount('5');
       setRetryAttempts('3');
@@ -113,7 +119,7 @@ const Tasks: React.FC = () => {
         <Card>
           <CardHeader>
             <CardTitle>启动序列</CardTitle>
-            <CardDescription>配置注册数量和可选代理，然后提交到队列。</CardDescription>
+            <CardDescription>配置注册数量、接码国家和可选代理，然后提交到队列。</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={onSubmit} className="flex flex-col gap-5">
@@ -150,6 +156,12 @@ const Tasks: React.FC = () => {
                 />
               </label>
 
+              {/* 👇 4. 把我们新写的 GrizzlyConfigPanel 插入到表单中 */}
+              <GrizzlyConfigPanel 
+                selectedCountry={smsCountry}
+                onCountrySelect={setSmsCountry}
+              />
+
               <Button type="submit" variant="primary" size="lg" disabled={submitting} className="w-full">
                 <RiRocket2Line className={submitting ? 'size-5 animate-soft-pulse' : 'size-5'} />
                 {submitting ? '正在投递任务...' : '提交任务到队列'}
@@ -158,6 +170,7 @@ const Tasks: React.FC = () => {
           </CardContent>
         </Card>
 
+        {/* ... 右侧的状态展示区域保持完全不变 ... */}
         <div className="grid gap-5">
           <Card>
             <CardHeader>
