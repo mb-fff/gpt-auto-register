@@ -19,6 +19,8 @@ RUN npm install -g pnpm && pnpm config set registry https://registry.npmmirror.c
 # ！！！请确保你在 scripts 文件夹下创建了 requirements.txt ！！！
 COPY scripts/requirements.txt ./scripts/
 RUN pip3 install --no-cache-dir -r scripts/requirements.txt
+RUN playwright install chromium
+RUN playwright install-deps
 
 COPY . .
 

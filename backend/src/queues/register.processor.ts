@@ -8,7 +8,6 @@ import * as path from 'path';
 import { AccountService } from '../modules/account/account.service';
 import { EmailService } from '../common/email/email.service';
 
-// 🌍 导出全局 Map，用于在跨 Service 之间追踪并强杀底层的 Python 进程
 export const activePythonProcesses = new Map<string, ChildProcess>();
 
 @Processor('register-queue', {
@@ -43,13 +42,14 @@ export class RegisterProcessor extends WorkerHost {
         '--country', smsCountry
       ]);
 
-      // 📌 核心：将启动的进程与 Job ID 绑定存入 Map
-      if (job.id) {
-        activePythonProcesses.set(job.id, child);
-      }
+      if (job.id) activePythonProcesses.set(job.id, child);
 
       let finalResult: any = null;
       let errorOutput = '';
+
+      // 🚀 加入状态机，控制超时与重发
+      let otpAttempts = 0;
+      const MAX_OTP_ATTEMPTS = 3;
 
       child.stdout.on('data', async (data) => {
         const lines = data.toString().split('\n');
@@ -58,16 +58,24 @@ export class RegisterProcessor extends WorkerHost {
           if (!line.trim()) continue;
 
           if (line.includes('WAITING_FOR_OTP')) {
-            this.logger.log(`📥 收到 Python 握手信号，开始 IMAP 收件: ${tempEmail}`);
-            const code = await this.emailService.waitForCode(tempEmail);
+            otpAttempts++;
+            this.logger.log(`📥 [第 ${otpAttempts}/${MAX_OTP_ATTEMPTS} 次] 收到 Worker 信号，开始轮询收件: ${tempEmail}`);
+
+            // 每次等待 60 秒 (60000ms)
+            const code = await this.emailService.waitForCode(tempEmail, 60000);
 
             if (code) {
               this.logger.log(`✅ IMAP 拿到验证码 ${code}，通过 stdin 喂给 Python`);
               child.stdin.write(code + '\n');
             } else {
-              this.logger.error('⏰ 接码超时，终止被卡住的 Python 进程');
-              child.kill();
-              reject(new Error('IMAP 接收验证码超时'));
+              if (otpAttempts < MAX_OTP_ATTEMPTS) {
+                this.logger.warn(`⏰ 60秒未收到邮件，向 Python 触发重发指令 (RESEND)...`);
+                child.stdin.write('RESEND\n');
+              } else {
+                this.logger.error('⏰ 多次申请重发依然收不到邮件，终止当前任务');
+                child.kill();
+                reject(new Error('IMAP 多次接收验证码超时'));
+              }
             }
           } else if (line.startsWith('{')) {
             try {
@@ -83,10 +91,7 @@ export class RegisterProcessor extends WorkerHost {
       });
 
       child.on('close', async (code) => {
-        // 📌 核心：进程结束时（无论是正常跑完还是被 kill），将其从追踪列表移除
-        if (job.id) {
-          activePythonProcesses.delete(job.id);
-        }
+        if (job.id) activePythonProcesses.delete(job.id);
 
         if (code !== 0 || finalResult?.status === 'error') {
           return reject(new Error(finalResult?.message || errorOutput || 'Python 进程异常退出或被强杀'));
@@ -97,10 +102,7 @@ export class RegisterProcessor extends WorkerHost {
 
           try {
             await this.accountService.createAccount({
-              email,
-              password,
-              accessToken: access_token,
-              refreshToken: refresh_token,
+              email, password, accessToken: access_token, refreshToken: refresh_token,
               proxy: proxyUrl
             } as any);
             this.logger.log(`🎉 任务彻底完成，Codex rt 已入库: ${email}`);
